@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { listConversationMessages, appendAssistantMessage, startConversation } from "../../convex/chat";
-import { listEpisodes } from "../../convex/episodes";
+import { getExistingEpisodeByYoutubeId, listEpisodes } from "../../convex/episodes";
 
 function handlerOf(value: unknown): (context: unknown, args: unknown) => Promise<unknown> {
   return (value as { _handler: (context: unknown, args: unknown) => Promise<unknown> })._handler;
@@ -13,6 +13,15 @@ describe("Convex ownership checks", () => {
       auth: { getUserIdentity: async () => ({ subject: "user_a" }) },
       db: { query: dbQuery },
     }, { userId: "user_b" })).rejects.toThrow("Unauthorized");
+    expect(dbQuery).not.toHaveBeenCalled();
+  });
+
+  it("does not reveal whether another user saved a video", async () => {
+    const dbQuery = vi.fn();
+    await expect(handlerOf(getExistingEpisodeByYoutubeId)({
+      auth: { getUserIdentity: async () => ({ subject: "user_a" }) },
+      db: { query: dbQuery },
+    }, { userId: "user_b", youtubeId: "video_1" })).rejects.toThrow("Unauthorized");
     expect(dbQuery).not.toHaveBeenCalled();
   });
 

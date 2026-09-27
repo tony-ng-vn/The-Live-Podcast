@@ -62,6 +62,23 @@ export const listEpisodes = query({
   },
 });
 
+export const getExistingEpisodeByYoutubeId = query({
+  args: {
+    userId: v.string(),
+    youtubeId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await requireClerkUser(ctx.auth, args.userId);
+    const episode = await ctx.db
+      .query("episodes")
+      .withIndex("by_user_youtube_id", (q) =>
+        q.eq("userId", args.userId).eq("youtubeId", args.youtubeId),
+      )
+      .first();
+    return episode ? { id: episode._id } : null;
+  },
+});
+
 export const getEpisodeDetailInternal = internalQuery({
   args: {
     episodeId: v.id("episodes"),
