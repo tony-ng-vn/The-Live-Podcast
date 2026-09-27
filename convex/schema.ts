@@ -1,8 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
-export const EMBEDDING_DIMENSION = 1536;
-
 export default defineSchema({
   users: defineTable({
     clerkUserId: v.string(),
@@ -45,17 +43,10 @@ export default defineSchema({
     text: v.string(),
     startTime: v.number(),
     endTime: v.number(),
-    embedding: v.optional(v.array(v.float64())),
-    embeddingSource: v.optional(v.string()),
   })
     .index("by_episode", ["episodeId"])
     .index("by_episode_start_time", ["episodeId", "startTime"])
-    .index("by_podcaster", ["podcasterId"])
-    .vectorIndex("by_embedding", {
-      vectorField: "embedding",
-      dimensions: EMBEDDING_DIMENSION,
-      filterFields: ["podcasterId", "episodeId"],
-    }),
+    .index("by_podcaster", ["podcasterId"]),
 
   conversations: defineTable({
     userId: v.string(),
@@ -66,11 +57,12 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_user_podcaster", ["userId", "podcasterId"])
+    .index("by_user_episode", ["userId", "episodeId"])
     .index("by_episode", ["episodeId"]),
 
   conversationMessages: defineTable({
     conversationId: v.id("conversations"),
-    role: v.string(),
+    role: v.union(v.literal("user"), v.literal("assistant")),
     content: v.string(),
     createdAt: v.number(),
   }).index("by_conversation", ["conversationId"]),
