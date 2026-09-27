@@ -165,7 +165,7 @@ describe("POST /api/episodes validation", () => {
 
     const res = await POST(req);
     expect(res.status).toBe(409);
-    await expect(res.json()).resolves.toEqual({ error: message });
+    await expect(res.json()).resolves.toEqual({ error: "This episode is already in your Library." });
   });
 
   it("uses a canonical watch URL for oEmbed metadata when given a raw video id", async () => {
