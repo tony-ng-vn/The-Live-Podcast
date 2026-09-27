@@ -38,6 +38,8 @@ describe("Fuzzy Brain transfer", () => {
     expect(packet.coverage.kind).toBe("source_export");
     expect(packet.coverage.completeness).toBe("partial");
     expect(packet.messages.map((message) => message.text)).toEqual(messages.map((message) => message.content));
+    expect(packet.messages[0].speaker).toBe("viewer at video 00:42");
+    expect(packet.messages[1].speaker).toBe("The Live Podcast at video 00:42");
     expect(packet.original?.text).toContain('"timestampInEpisode":42');
     expect(JSON.stringify(packet)).not.toContain("future transcript");
     expect(buildTransfer({ sourceId, ownerId: "tony_user", conversation, episode, messages }).revision).toBe(packet.revision);
