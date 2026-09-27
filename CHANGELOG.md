@@ -1,3 +1,13 @@
+## v0.4.5
+
+2026-09-27
+
+**Episodes**
+
+- Adding a video that is already in your library now gives a clear message without fetching its captions again.
+
+---
+
 ## v0.4.4
 
 2026-09-27

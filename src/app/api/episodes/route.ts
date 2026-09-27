@@ -243,6 +243,27 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
+  let convex;
+  try {
+    convex = await getAuthenticatedConvexClient(getToken);
+    const existing = await withTimeout(
+      convex.query(api.episodes.getExistingEpisodeByYoutubeId, {
+        userId,
+        youtubeId: videoId,
+      }),
+      10_000,
+      "Timed out while checking the video library",
+    );
+    if (existing) {
+      return NextResponse.json(
+        { error: "This episode is already in your Library." },
+        { status: 409 },
+      );
+    }
+  } catch (error) {
+    return serviceFailure("episodes.duplicate-check", error);
+  }
+
   // Fetch before Convex ingestion so the same timed segments work locally and in production.
   let segments: Array<{ text: string; offset: number; duration: number }>;
   const metadata = await fetchYouTubeMetadata(videoId);
@@ -260,7 +281,6 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const convex = await getAuthenticatedConvexClient(getToken);
     await withTimeout(
       convex.mutation(api.users.ensureUser, {
         clerkUserId: userId,
