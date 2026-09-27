@@ -42,7 +42,7 @@ vi.mock("@clerk/nextjs/server", () => ({
 
 vi.mock("@/lib/convex/client", () => ({
   api: apiRefs,
-  getConvexClient: () => ({
+  getAuthenticatedConvexClient: async () => ({
     mutation: mutationMock,
     query: queryMock,
   }),

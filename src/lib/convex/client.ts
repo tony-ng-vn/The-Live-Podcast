@@ -53,4 +53,16 @@ export function getConvexClient(): ConvexHttpClient {
   return cachedClient;
 }
 
+export async function getAuthenticatedConvexClient(
+  getToken: () => Promise<string | null>,
+): Promise<ConvexHttpClient> {
+  const token = await getToken();
+  if (!token) {
+    throw new ConvexConfigurationError("Clerk Convex token is unavailable.");
+  }
+
+  // A shared mutable client could send one user's token on another user's request.
+  return new ConvexHttpClient(getConfiguredConvexUrl(), { auth: token });
+}
+
 export { api };

@@ -3,11 +3,9 @@ import { chatWithLLM } from "./llm";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import {
-  action,
   internalAction,
   internalMutation,
   internalQuery,
-  query,
 } from "./_generated/server";
 
 interface EpisodeProfileSource {
@@ -19,32 +17,6 @@ interface ConversationMessagePayload {
   role: string;
   content: string;
 }
-
-export const getPodcasterById = query({
-  args: {
-    podcasterId: v.id("podcasters"),
-  },
-  handler: async (ctx, args) => {
-    const podcaster = await ctx.db.get(args.podcasterId);
-    if (!podcaster) {
-      return null;
-    }
-
-    return {
-      id: podcaster._id,
-      name: podcaster.name,
-    };
-  },
-});
-
-export const rebuildPodcasterProfile: ReturnType<typeof action> = action({
-  args: {
-    podcasterId: v.id("podcasters"),
-  },
-  handler: async (ctx, args) => {
-    return ctx.runAction(internal.profiles.rebuildPodcasterProfileInternal, args);
-  },
-});
 
 export const rebuildPodcasterProfileInternal = internalAction({
   args: {

@@ -30,7 +30,7 @@ describe("chat pause history", () => {
   it("rejects a conversation from another episode before adding the question", async () => {
     const insert = vi.fn();
     const records: Record<string, Record<string, string>> = {
-      episode_1: { podcasterId: "podcaster_1" },
+      episode_1: { podcasterId: "podcaster_1", userId: "user_1" },
       podcaster_1: {},
       conversation_1: {
         userId: "user_1",
@@ -38,7 +38,10 @@ describe("chat pause history", () => {
         podcasterId: "podcaster_1",
       },
     };
-    const ctx = { db: { get: vi.fn(async (id: string) => records[id]), insert } };
+    const ctx = {
+      auth: { getUserIdentity: async () => ({ subject: "user_1" }) },
+      db: { get: vi.fn(async (id: string) => records[id]), insert },
+    };
 
     const handler = (startConversation as unknown as {
       _handler: (context: unknown, args: unknown) => Promise<unknown>;

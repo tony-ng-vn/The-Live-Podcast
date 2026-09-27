@@ -6,7 +6,6 @@ const isProtectedApiRoute = createRouteMatcher([
   "/api/chat(.*)",
   "/api/chat/end(.*)",
   "/api/episodes(.*)",
-  "/api/profiles/build(.*)",
   "/api/model-settings(.*)",
 ]);
 
@@ -33,7 +32,6 @@ export const config = {
     "/api/chat/:path*",
     "/api/chat/end/:path*",
     "/api/episodes/:path*",
-    "/api/profiles/build/:path*",
     "/settings/:path*",
     "/api/model-settings/:path*",
   ],
