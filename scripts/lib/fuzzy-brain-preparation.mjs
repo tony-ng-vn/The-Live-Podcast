@@ -18,6 +18,15 @@ export function preparePackets({ sourceId, ownerId, items, receipts }) {
   return packets;
 }
 
+export function selectPreparedEntry(manifest, ownerId, sourceId, conversationId) {
+  if (manifest?.ownerId !== ownerId || manifest?.sourceId !== sourceId) {
+    throw new Error("Fuzzy Brain preview identity mismatch");
+  }
+  const entry = manifest.entries?.[conversationId];
+  if (!entry) throw new Error("This chat has no prepared preview. Run prepare first.");
+  return entry;
+}
+
 export function verifyImport(packet, imported, verified) {
   const receipt = verified?.receipt;
   if (imported?.state !== "committed" || verified?.state !== "verified" ||
