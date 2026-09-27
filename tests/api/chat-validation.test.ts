@@ -304,7 +304,8 @@ describe("POST /api/chat validation", () => {
 
     expect(res.status).toBe(503);
     await expect(res.json()).resolves.toMatchObject({
-      error: "Oops, someone stole the apple. Please try again while I find another one.",
+      error: "I could not prepare this chat right now. Please try your question again.",
+      code: "CHAT_UNAVAILABLE",
       errorId: expect.any(String),
     });
   });

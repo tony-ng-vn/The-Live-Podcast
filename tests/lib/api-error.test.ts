@@ -16,7 +16,7 @@ describe("readApiError", () => {
       headers: { "Content-Type": "text/html" },
     });
     expect(await readApiError(response)).toBe(
-      "Oops, someone stole the apple. Please try again while I find another one.",
+      "That request did not finish. Please try again.",
     );
   });
 
@@ -26,7 +26,22 @@ describe("readApiError", () => {
       { status: 503 },
     );
     expect(await readApiError(response)).toBe(
-      "Oops, someone stole the apple. Please try again while I find another one.",
+      "That request did not finish. Please try again.",
     );
+  });
+});
+
+
+describe("safe public failure codes", () => {
+  it("uses a recognized failure code without trusting the provider message", async () => {
+    const response = Response.json({
+      code: "TRANSCRIPT_UNAVAILABLE", error: "SerpApi key private-key exceeded quota",
+    }, { status: 503 });
+    expect(await readApiError(response)).toBe("I could not fetch this video's captions right now. Please try adding it again later.");
+  });
+
+  it("uses the default message for an unknown failure code", async () => {
+    const response = Response.json({ code: "PRIVATE_BACKEND_FAILURE", error: "private-key" }, { status: 503 });
+    expect(await readApiError(response)).toBe("That request did not finish. Please try again.");
   });
 });

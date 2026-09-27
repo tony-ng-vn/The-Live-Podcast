@@ -357,7 +357,7 @@ describe("POST /api/episodes validation", () => {
     }));
 
     expect(res.status).toBe(503);
-    expect((await res.json() as { error: string }).error).toContain("someone stole the apple");
+    expect(await res.json()).toMatchObject({ code: "TRANSCRIPT_UNAVAILABLE", error: expect.stringContaining("captions right now") });
     expect(recordServerErrorMock).toHaveBeenCalledWith("episodes.transcript", expect.any(Error));
     expect(actionMock).not.toHaveBeenCalled();
   });
@@ -430,7 +430,8 @@ describe("POST /api/episodes validation", () => {
     const res = await POST(req);
     expect(res.status).toBe(503);
     await expect(res.json()).resolves.toEqual({
-      error: "Oops, someone stole the apple. Please try again while I find another one.",
+      error: "I could not finish adding this video. Check your library before trying again.",
+      code: "VIDEO_SAVE_UNAVAILABLE",
       errorId: "error-test-id",
     });
     expect(recordServerErrorMock).toHaveBeenCalledWith("episodes.ingest", expect.any(Error));
@@ -443,7 +444,8 @@ describe("POST /api/episodes validation", () => {
 
     expect(res.status).toBe(503);
     await expect(res.json()).resolves.toEqual({
-      error: "Oops, someone stole the apple. Please try again while I find another one.",
+      error: "Your library could not load right now. Please refresh to try again.",
+      code: "LIBRARY_UNAVAILABLE",
       errorId: "error-test-id",
     });
     expect(recordServerErrorMock).toHaveBeenCalledWith("episodes.list", expect.any(Error));
@@ -458,7 +460,8 @@ describe("POST /api/episodes validation", () => {
 
     expect(res.status).toBe(503);
     await expect(res.json()).resolves.toEqual({
-      error: "Oops, someone stole the apple. Please try again while I find another one.",
+      error: "This video could not load right now. Please try opening it again.",
+      code: "VIDEO_LOAD_UNAVAILABLE",
       errorId: "error-test-id",
     });
     expect(recordServerErrorMock).toHaveBeenCalledWith("episodes.detail", expect.any(Error));
