@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { embed, embedBatch } from "./embeddings";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { action, internalAction, internalMutation, internalQuery } from "./_generated/server";
+import { internalAction, internalMutation, internalQuery } from "./_generated/server";
 import { requireClerkUser } from "./auth";
 
 interface RecentChunk {
@@ -36,7 +36,7 @@ interface SemanticSearchResult {
   score: number;
 }
 
-export const getConversationContext = action({
+export const getConversationContext = internalAction({
   args: {
     episodeId: v.id("episodes"),
     podcasterId: v.id("podcasters"),
