@@ -166,6 +166,17 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ error: publicFailure("CHAT_UNAVAILABLE").error, code: "CHAT_UNAVAILABLE", errorId }, { status: 503 });
   }
 
+  const rollbackQuestion = async () => {
+    if (!activeMessageId) return;
+    try {
+      await convex.mutation(api.chat.rollbackFailedQuestion, {
+        conversationId: activeConversationId, messageId: activeMessageId,
+      });
+    } catch (error) {
+      await recordServerError("chat.rollback", error);
+    }
+  };
+
   let failureCode: PublicFailureCode = "CHAT_UNAVAILABLE";
   let llmMessages: Message[];
   let stream: AsyncGenerator<string, void, unknown>;
@@ -277,16 +288,7 @@ export async function POST(request: Request): Promise<Response> {
           enqueueSseEvent(controller, { type: "done" });
         } catch (error) {
           await recordServerError("chat.stream", error);
-          if (activeMessageId) {
-            try {
-              await convex.mutation(api.chat.rollbackFailedQuestion, {
-                conversationId: convoId,
-                messageId: activeMessageId,
-              });
-            } catch (rollbackError) {
-              await recordServerError("chat.rollback", rollbackError);
-            }
-          }
+          await rollbackQuestion();
           const failure = failureFromError(error, failureCode);
           enqueueSseEvent(controller, { type: "error", message: failure.error, code: failure.code });
         } finally {
@@ -305,16 +307,7 @@ export async function POST(request: Request): Promise<Response> {
     });
   } catch (error) {
     const errorId = await recordServerError("chat.response", error);
-    if (activeMessageId) {
-      try {
-        await convex.mutation(api.chat.rollbackFailedQuestion, {
-          conversationId: activeConversationId,
-          messageId: activeMessageId,
-        });
-      } catch (rollbackError) {
-        await recordServerError("chat.rollback", rollbackError);
-      }
-    }
+    await rollbackQuestion();
     const failure = failureFromError(error, failureCode);
     return NextResponse.json(
       { error: failure.error, code: failure.code, errorId, conversationId: activeConversationId },

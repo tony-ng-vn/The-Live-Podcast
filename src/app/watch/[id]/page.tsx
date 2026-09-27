@@ -78,9 +78,9 @@ export default function WatchPage() {
     jumpInGuardRef.current = true;
 
     if (playerRef.current) {
+      const duration = playerRef.current.getCompletedDuration();
       playerRef.current.pause();
       setChatTimestamp(playerRef.current.getCurrentTime());
-      const duration = playerRef.current.getDuration();
       setVideoDuration(Number.isFinite(duration) && duration > 0 ? duration : undefined);
     }
 
