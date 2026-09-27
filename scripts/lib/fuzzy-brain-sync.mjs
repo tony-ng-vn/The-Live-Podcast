@@ -19,6 +19,16 @@ function videoTime(seconds) {
   return minutes >= 60 ? `${Math.floor(minutes / 60)}:${formatted}` : formatted;
 }
 
+/**
+ * @param {{
+ *   sourceId: string,
+ *   ownerId: string,
+ *   conversation: { _id: string, userId: string, episodeId: string },
+ *   episode: { _id: string, userId?: string, title: string, youtubeId: string },
+ *   messages: Array<{ _id: string, role: string, content: string, createdAt: number, _creationTime?: number, timestampInEpisode?: number }>,
+ *   previousReceiptId?: string | null,
+ * }} options
+ */
 export function buildTransfer({ sourceId, ownerId, conversation, episode, messages, previousReceiptId = null }) {
   if (!sourceId || !ownerId || !conversation?._id || !episode?._id) {
     throw new Error("missing sync identity");
