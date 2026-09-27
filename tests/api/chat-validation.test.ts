@@ -246,4 +246,26 @@ describe("POST /api/chat validation", () => {
     await expect(res.json()).resolves.toMatchObject({ error: expect.stringContaining("Model settings"), code: "MODEL_KEY_REQUIRED" });
     expect(mutationMock).not.toHaveBeenCalledWith(apiRefs.chat.startConversation, expect.anything());
   });
+
+  it("hides conversation setup failures from the user", async () => {
+    mutationMock.mockImplementation(async (ref: string) => {
+      if (ref === apiRefs.chat.startConversation) {
+        throw new Error("Internal Convex details that should stay in logs");
+      }
+      return "user_doc";
+    });
+    const res = await POST(new Request("http://localhost/api/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        episodeId: "episode_1", podcasterId: "podcaster_1", timestamp: 30,
+        message: "Explain this",
+      }),
+    }));
+
+    expect(res.status).toBe(503);
+    await expect(res.json()).resolves.toMatchObject({
+      error: "Oops, someone stole the apple. Please try again while I find another one.",
+      errorId: expect.any(String),
+    });
+  });
 });
