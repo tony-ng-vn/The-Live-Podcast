@@ -227,7 +227,7 @@ describe("POST /api/chat validation", () => {
     }));
 
     expect(res.status).toBe(400);
-    expect((await res.json() as { error: string }).error).toContain("API key");
+    await expect(res.json()).resolves.toMatchObject({ error: expect.stringContaining("API key"), code: "MODEL_KEY_REQUIRED" });
     expect(mutationMock).not.toHaveBeenCalledWith(apiRefs.chat.startConversation, expect.anything());
   });
 
@@ -243,7 +243,7 @@ describe("POST /api/chat validation", () => {
     }));
 
     expect(res.status).toBe(400);
-    expect((await res.json() as { error: string }).error).toContain("Model settings");
+    await expect(res.json()).resolves.toMatchObject({ error: expect.stringContaining("Model settings"), code: "MODEL_KEY_REQUIRED" });
     expect(mutationMock).not.toHaveBeenCalledWith(apiRefs.chat.startConversation, expect.anything());
   });
 });
