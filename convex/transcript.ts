@@ -10,6 +10,7 @@ export interface ChunkedTranscript {
   text: string;
   startTime: number;
   endTime: number;
+  segments?: Array<{ text: string; startTime: number; endTime: number }>;
 }
 
 export function extractYouTubeId(url: string): string | null {
@@ -119,6 +120,11 @@ export function chunkTranscript(
         text: currentChunk.map((s) => s.text).join(" "),
         startTime: chunkStart,
         endTime: chunkEnd,
+        segments: currentChunk.map((s) => ({
+          text: s.text,
+          startTime: s.offset,
+          endTime: s.offset + s.duration,
+        })),
       });
       currentChunk = [];
       chunkStart = chunkEnd;
@@ -131,8 +137,35 @@ export function chunkTranscript(
       text: currentChunk.map((s) => s.text).join(" "),
       startTime: chunkStart,
       endTime: last.offset + last.duration,
+      segments: currentChunk.map((s) => ({
+        text: s.text,
+        startTime: s.offset,
+        endTime: s.offset + s.duration,
+      })),
     });
   }
 
   return chunks;
+}
+
+export function selectTranscriptUpToTimestamp(
+  chunks: ChunkedTranscript[],
+  timestamp: number,
+): Array<{ text: string; startTime: number; endTime: number }> {
+  return chunks.flatMap((chunk) => {
+    if (!chunk.segments) {
+      return chunk.endTime <= timestamp
+        ? [{ text: chunk.text, startTime: chunk.startTime, endTime: chunk.endTime }]
+        : [];
+    }
+
+    const heard = chunk.segments.filter((segment) => segment.endTime <= timestamp);
+    if (heard.length === 0) return [];
+
+    return [{
+      text: heard.map((segment) => segment.text).join(" "),
+      startTime: heard[0].startTime,
+      endTime: heard[heard.length - 1].endTime,
+    }];
+  });
 }
