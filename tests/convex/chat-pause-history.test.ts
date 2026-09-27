@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { selectConversationMessagesUpToTimestamp, startConversation } from "../../convex/chat";
+import { rollbackFailedQuestion, selectConversationMessagesUpToTimestamp, startConversation } from "../../convex/chat";
 
 describe("chat pause history", () => {
   it("keeps earlier messages and excludes later answers after a rewind", () => {
@@ -56,5 +56,32 @@ describe("chat pause history", () => {
       message: "What did they say?",
     })).rejects.toThrow("Conversation episode mismatch");
     expect(insert).not.toHaveBeenCalled();
+  });
+
+  it("removes only the latest pending question after a provider failure", async () => {
+    const dbDelete = vi.fn();
+    const question = {
+      _id: "question_1",
+      conversationId: "conversation_1",
+      role: "user",
+      createdAt: Date.now(),
+    };
+    const ctx = {
+      auth: { getUserIdentity: async () => ({ subject: "user_1" }) },
+      db: {
+        get: vi.fn(async (id: string) => id === "conversation_1" ? { userId: "user_1" } : question),
+        query: vi.fn(() => ({
+          withIndex: () => ({ order: () => ({ first: async () => question }) }),
+        })),
+        delete: dbDelete,
+      },
+    };
+    const handler = (rollbackFailedQuestion as unknown as {
+      _handler: (context: unknown, args: unknown) => Promise<unknown>;
+    })._handler;
+
+    await handler(ctx, { conversationId: "conversation_1", messageId: "question_1" });
+    expect(dbDelete).toHaveBeenCalledWith("question_1");
+    expect(dbDelete).toHaveBeenCalledTimes(1);
   });
 });

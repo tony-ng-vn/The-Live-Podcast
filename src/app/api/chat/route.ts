@@ -148,6 +148,7 @@ export async function POST(request: Request): Promise<Response> {
       : asConvexId<"conversations">(normalizedConversationId);
 
   let activeConversationId: Id<"conversations">;
+  let activeMessageId: Id<"conversationMessages"> | undefined;
   try {
     const start = await convex.mutation(api.chat.startConversation, {
       userId,
@@ -158,6 +159,7 @@ export async function POST(request: Request): Promise<Response> {
       conversationId: typedConversationId,
     });
     activeConversationId = start.conversationId;
+    activeMessageId = start.messageId;
   } catch (error) {
     const errorId = await recordServerError("chat.conversation", error);
     return NextResponse.json({ error: FRIENDLY_SERVER_ERROR, errorId }, { status: 503 });
@@ -293,6 +295,16 @@ export async function POST(request: Request): Promise<Response> {
           enqueueSseEvent(controller, { type: "done" });
         } catch (error) {
           await recordServerError("chat.stream", error);
+          if (activeMessageId) {
+            try {
+              await convex.mutation(api.chat.rollbackFailedQuestion, {
+                conversationId: convoId,
+                messageId: activeMessageId,
+              });
+            } catch (rollbackError) {
+              await recordServerError("chat.rollback", rollbackError);
+            }
+          }
           enqueueSseEvent(controller, isModelRateLimited(error)
             ? { type: "error", message: MODEL_RATE_LIMIT_ERROR, code: "MODEL_RATE_LIMITED" }
             : { type: "error", message: FRIENDLY_SERVER_ERROR });
@@ -312,14 +324,24 @@ export async function POST(request: Request): Promise<Response> {
     });
   } catch (error) {
     const errorId = await recordServerError("chat.response", error);
+    if (activeMessageId) {
+      try {
+        await convex.mutation(api.chat.rollbackFailedQuestion, {
+          conversationId: activeConversationId,
+          messageId: activeMessageId,
+        });
+      } catch (rollbackError) {
+        await recordServerError("chat.rollback", rollbackError);
+      }
+    }
     if (isModelRateLimited(error)) {
       return NextResponse.json(
-        { error: MODEL_RATE_LIMIT_ERROR, code: "MODEL_RATE_LIMITED", errorId },
+        { error: MODEL_RATE_LIMIT_ERROR, code: "MODEL_RATE_LIMITED", errorId, conversationId: activeConversationId },
         { status: 429 },
       );
     }
     return NextResponse.json(
-      { error: FRIENDLY_SERVER_ERROR, errorId },
+      { error: FRIENDLY_SERVER_ERROR, errorId, conversationId: activeConversationId },
       { status: 503 }
     );
   }

@@ -88,7 +88,7 @@ export const startConversation = mutation({
       });
     }
 
-    await ctx.db.insert("conversationMessages", {
+    const messageId = await ctx.db.insert("conversationMessages", {
       conversationId: activeConversationId,
       role: "user",
       content: trimmedMessage,
@@ -96,7 +96,36 @@ export const startConversation = mutation({
       createdAt: Date.now(),
     });
 
-    return { conversationId: activeConversationId };
+    return { conversationId: activeConversationId, messageId };
+  },
+});
+
+export const rollbackFailedQuestion = mutation({
+  args: {
+    conversationId: v.id("conversations"),
+    messageId: v.id("conversationMessages"),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireClerkUser(ctx.auth);
+    const conversation = await ctx.db.get(args.conversationId);
+    if (!conversation) {
+      throw new ConvexError("Conversation not found");
+    }
+    requireRecordOwner(conversation.userId, userId);
+
+    const message = await ctx.db.get(args.messageId);
+    if (!message || message.conversationId !== args.conversationId || message.role !== "user") {
+      throw new ConvexError("Question not found");
+    }
+    const latest = await ctx.db
+      .query("conversationMessages")
+      .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
+      .order("desc")
+      .first();
+    if (latest?._id !== args.messageId || Date.now() - message.createdAt > 10 * 60 * 1000) {
+      throw new ConvexError("Question is no longer pending");
+    }
+    await ctx.db.delete(args.messageId);
   },
 });
 

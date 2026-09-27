@@ -95,7 +95,12 @@ export default function ChatPanel({
           const payload = (await res.json().catch(() => null)) as {
             error?: string;
             code?: string;
+            conversationId?: string;
           } | null;
+          if (payload?.conversationId) {
+            setConversationId(payload.conversationId);
+            onConversationIdChange?.(payload.conversationId);
+          }
           const errorMessage =
             payload?.error ?? "Failed to get a response. Please try again.";
 
