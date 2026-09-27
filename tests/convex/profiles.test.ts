@@ -49,21 +49,58 @@ async function seedLongEpisode(
   return { episodeId, podcasterId };
 }
 
+/** Seeds one episode of `chunkCount` chunks and returns the profile sample. */
+async function seedAndSample(
+  t: Backend,
+  chunkCount: number,
+): Promise<string> {
+  const podcasterId = await t.mutation(internal.episodes.upsertPodcaster, {
+    channelUrl: `https://www.youtube.com/@host-${chunkCount}-${Math.random()}`,
+    name: `Host ${chunkCount}`,
+  });
+
+  await t.run(async (ctx) => {
+    const id = await ctx.db.insert("episodes", {
+      userId: "user_a",
+      podcasterId,
+      youtubeUrl: "https://youtu.be/dQw4w9WgXcQ",
+      youtubeId: "dQw4w9WgXcQ",
+      title: `Episode ${chunkCount}`,
+      createdAt: 0,
+      updatedAt: 0,
+    });
+    for (let i = 0; i < chunkCount; i += 1) {
+      await ctx.db.insert("transcriptChunks", {
+        episodeId: id,
+        podcasterId,
+        text: `chunk-${i}`,
+        startTime: i * 5,
+        endTime: i * 5 + 5,
+      });
+    }
+  });
+
+  const result = await t.action(internal.profiles.getProfileSourceData, {
+    podcasterId,
+  });
+  return result.episodes[0]?.sampleText ?? "";
+}
+
 describe("getProfileSourceData sampling", () => {
   it("samples across the whole episode, not just the tail", async () => {
     const t = convexTest(schema, convexModules);
     const { podcasterId } = await seedLongEpisode(t, 400);
 
-    const result = await t.run((ctx) =>
-      ctx.runQuery(internal.profiles.getProfileSourceData, { podcasterId }),
-    );
+    const result = await t.action(internal.profiles.getProfileSourceData, {
+      podcasterId,
+    });
 
     const sample = result.episodes[0]?.sampleText ?? "";
     expect(sample.length).toBeGreaterThan(0);
 
     const indices = Array.from(sample.matchAll(/chunk-(\d+)/g))
-      .map((match) => Number(match[1]))
-      .sort((a, b) => a - b);
+      .map((match: unknown) => Number((match as RegExpMatchArray)[1]))
+      .sort((a: number, b: number) => a - b);
 
     // Bounded sample.
     expect(indices.length).toBeLessThanOrEqual(36);
@@ -71,37 +108,34 @@ describe("getProfileSourceData sampling", () => {
     // No duplicates, so every sampled slot is a distinct chunk.
     expect(new Set(indices).size).toBe(indices.length);
 
-    // The two properties the broken version failed: it must not be confined to
-    // the tail, and it must not be confined to the head.
-    expect(indices[0]).toBeLessThan(400 * 0.25);
-    expect(indices[indices.length - 1]).toBeGreaterThan(400 * 0.75);
+    // The decisive checks. A naive "spans the episode" assertion passed against
+    // the broken sampler, which covered chunks 0-35 plus a single trailing
+    // chunk. Require every decile to contribute, across several lengths —
+    // including the long-episode regime where a hash-based draw skewed worst.
+    for (const total of [200, 400, 1440]) {
+      const long = await seedAndSample(t, total);
+      const picked = Array.from(long.matchAll(/chunk-(\d+)/g))
+        .map((match: unknown) => Number((match as RegExpMatchArray)[1]))
+        .sort((a: number, b: number) => a - b);
 
-    // The decisive check. The broken version sampled chunks 0-35 plus a single
-    // trailing chunk, so it passed a naive "spans the episode" assertion while
-    // covering nothing in the middle. Require the interior to be populated
-    // across every quarter of the episode.
-    for (const [lo, hi] of [
-      [0, 100],
-      [100, 200],
-      [200, 300],
-      [300, 400],
-    ]) {
-      expect(
-        indices.filter((i) => i >= lo && i < hi).length,
-      ).toBeGreaterThan(0);
-    }
+      expect(picked.length).toBeGreaterThan(10);
+      expect(new Set(picked).size).toBe(picked.length);
 
-    // Every quarter should contribute a meaningful share, not a single chunk.
-    for (const [lo, hi] of [
-      [0, 100],
-      [100, 200],
-      [200, 300],
-      [300, 400],
-    ]) {
-      expect(indices.filter((i) => i >= lo && i < hi).length).toBeGreaterThan(1);
+      const deciles = new Array(10).fill(0);
+      for (const i of picked) {
+        deciles[Math.min(9, Math.floor((i / total) * 10))] += 1;
+      }
+      // Every decile of the episode must be represented.
+      for (const [d, count] of deciles.entries()) {
+        expect(
+          count,
+          `n=${total} decile ${d} was empty (picked ${picked.length} of ${total})`,
+        ).toBeGreaterThan(0);
+      }
+      // And no decile may hold the whole sample.
+      expect(Math.max(...deciles)).toBeLessThan(picked.length);
     }
   });
-
   it("returns an empty sample for an episode with no chunks", async () => {
     const t = convexTest(schema, convexModules);
     const podcasterId = await t.mutation(internal.episodes.upsertPodcaster, {
@@ -121,9 +155,9 @@ describe("getProfileSourceData sampling", () => {
       });
     });
 
-    const result = await t.run((ctx) =>
-      ctx.runQuery(internal.profiles.getProfileSourceData, { podcasterId }),
-    );
+    const result = await t.action(internal.profiles.getProfileSourceData, {
+      podcasterId,
+    });
 
     expect(result.episodes[0]?.sampleText).toBe("");
   });
@@ -156,9 +190,9 @@ describe("getProfileSourceData sampling", () => {
       }
     });
 
-    const result = await t.run((ctx) =>
-      ctx.runQuery(internal.profiles.getProfileSourceData, { podcasterId }),
-    );
+    const result = await t.action(internal.profiles.getProfileSourceData, {
+      podcasterId,
+    });
 
     // Capped at 5 to stay inside Convex's per-transaction read limit.
     expect(result.episodes.length).toBeLessThanOrEqual(5);

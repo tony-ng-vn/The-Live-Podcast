@@ -170,7 +170,10 @@ export async function POST(request: Request): Promise<Response> {
     llmMessages = [
       systemMessage,
       ...trimHistory(
-        priorMessages.map((m) => ({ role: m.role, content: m.content })),
+        priorMessages.map((m: { role: "user" | "assistant"; content: string }) => ({
+          role: m.role,
+          content: m.content,
+        })),
         HISTORY_CHAR_BUDGET,
       ),
     ];
@@ -203,6 +206,21 @@ export async function POST(request: Request): Promise<Response> {
       };
 
       let fullContent = "";
+      // Exactly-once persist. The abort guard, the success path, and the catch
+      // can all reach the persist; a flag makes the double-write impossible
+      // rather than relying on them being mutually exclusive.
+      let persisted = false;
+
+      const persist = async () => {
+        if (persisted || fullContent.length === 0) return;
+        persisted = true;
+        await convex
+          .mutation(api.chat.appendAssistantMessage, {
+            conversationId: activeConversationId,
+            content: fullContent,
+          })
+          .catch(() => undefined);
+      };
 
       try {
         send({ type: "conversation", conversationId: conversationIdForStream });
@@ -218,60 +236,29 @@ export async function POST(request: Request): Promise<Response> {
         }
 
         if (providerAbort.signal.aborted) {
-          // Persist whatever arrived before the viewer left, then stop.
-          if (fullContent.length > 0) {
-            await convex
-              .mutation(api.chat.appendAssistantMessage, {
-                conversationId: activeConversationId,
-                content: fullContent,
-              })
-              .catch(() => undefined);
-          }
+          // Keep whatever arrived before the viewer left.
+          await persist();
           return;
         }
 
-        if (fullContent.length > 0) {
-          await convex
-            .mutation(api.chat.appendAssistantMessage, {
-              conversationId: activeConversationId,
-              content: fullContent,
-            })
-            .catch(() => undefined);
-        }
-
+        await persist();
         send({ type: "done" });
       } catch (error) {
-        // The provider request carries `providerAbort.signal`, so an aborted
-        // read surfaces here rather than at the guard above. Persist whatever
-        // arrived first: dropping it would leave the user's question in the
-        // history with no answer, a shape that cannot otherwise occur.
-        if (fullContent.length > 0) {
-          await convex
-            .mutation(api.chat.appendAssistantMessage, {
-              conversationId: activeConversationId,
-              content: fullContent,
-            })
-            .catch(() => undefined);
-        }
+        // The provider request carries `providerAbort.signal`, so an abort
+        // surfaces here as a read error. Persist first: dropping it would leave
+        // the user's question in the history with no answer, a shape that
+        // cannot otherwise occur.
+        await persist();
 
         if (providerAbort.signal.aborted) return;
 
-        const message =
-          error instanceof Error
-            ? error.message
-            : "Streaming failed before the response could be saved.";
-
-        // Persist whatever streamed before the failure so the turn is not lost.
-        if (fullContent.length > 0) {
-          await convex
-            .mutation(api.chat.appendAssistantMessage, {
-              conversationId: activeConversationId,
-              content: fullContent,
-            })
-            .catch(() => undefined);
-        }
-
-        send({ type: "error", message });
+        send({
+          type: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Streaming failed before the response could be saved.",
+        });
       } finally {
         try {
           controller.close();

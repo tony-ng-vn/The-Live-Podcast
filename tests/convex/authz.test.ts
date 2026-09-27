@@ -253,7 +253,8 @@ describe("chat.startConversation", () => {
       return { convo, messages };
     });
 
-    expect(stored.convo?.userId).toBe("user_a");
+    const convo = stored.convo as { userId: string } | null;
+    expect(convo?.userId).toBe("user_a");
     expect(stored.messages).toHaveLength(1);
     expect(stored.messages[0].content).toBe("hello");
   });

@@ -175,15 +175,21 @@ export function useChatStream(): UseChatStreamResult {
             }
 
             if (parsed.type === "conversation") {
-              conversationIdRef.current = parsed.conversationId;
-              setConversationId(parsed.conversationId);
+              // Epoch-guarded: a stale stream must not retarget the next
+              // message at a conversation the viewer has already abandoned.
+              if (epoch === epochRef.current) {
+                conversationIdRef.current = parsed.conversationId;
+                setConversationId(parsed.conversationId);
+              }
               continue;
             }
 
             if (parsed.type === "token") {
+              // Check staleness before any observable effect, including the
+              // caller's token callback.
+              if (epoch !== epochRef.current) return null;
               fullContent += parsed.content;
               options.onToken?.(fullContent);
-              if (epoch !== epochRef.current) return null;
               const index = assistantIndex;
               updateMessages((prev) => {
                 const updated = [...prev];
@@ -266,6 +272,14 @@ export function useChatStream(): UseChatStreamResult {
       assistantIndex: number,
       options: SendOptions,
     ): Promise<string | null> => {
+      // An index carried over from before a reset would silently retry the
+      // wrong turn, so require the slot and its predecessor to be intact.
+      if (assistantIndex <= 0 || assistantIndex >= nextIndexRef.current) {
+        return null;
+      }
+      const target = messagesRef.current[assistantIndex];
+      if (!target || target.role !== "assistant") return null;
+
       const userMessage = messagesRef.current[assistantIndex - 1];
       if (!userMessage || userMessage.role !== "user") return null;
 

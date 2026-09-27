@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { chatWithLLM } from "./llm";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import {
   action,
   internalAction,
@@ -11,13 +12,18 @@ import {
 import { ForbiddenError, requireUserId } from "./auth";
 import { FORBIDDEN_PODCASTER_MESSAGE } from "../src/lib/convex/auth-messages";
 
-const MAX_PROFILE_SOURCE_EPISODES = 5;
-/**
- * Chunks sampled per episode. Five episodes x a 2-hour episode (~1440 chunks)
- * is ~7,200 documents, comfortably inside Convex's per-transaction read limit.
- */
-const PROFILE_SAMPLE_TARGET = 36;
+export interface EpisodeProfileSource {
+  title: string;
+  sampleText: string;
+}
 
+export interface ProfileSourceData {
+  episodes: EpisodeProfileSource[];
+}
+
+const MAX_PROFILE_SOURCE_EPISODES = 3;
+/** Chunks sampled per episode. */
+const PROFILE_SAMPLE_TARGET = 36;
 export const getPodcasterById = query({
   args: {
     podcasterId: v.id("podcasters"),
@@ -83,9 +89,10 @@ export const rebuildPodcasterProfileInternal = internalAction({
     podcasterId: v.id("podcasters"),
   },
   handler: async (ctx, args) => {
-    const payload = await ctx.runQuery(internal.profiles.getProfileSourceData, {
-      podcasterId: args.podcasterId,
-    });
+    const payload = await ctx.runAction(
+      internal.profiles.getProfileSourceData,
+      { podcasterId: args.podcasterId },
+    );
 
     if (payload.episodes.length === 0) {
       return { profile: null };
@@ -192,70 +199,148 @@ export const updateUserPodcasterMemoryFromConversation = internalAction({
 });
 
 /**
- * Samples spread across each episode rather than the first/last N chunks.
+ * Counts an episode's chunks.
  *
- * Taking the 5 most recent chunks sampled only the final ~25 seconds of an
- * episode, which is a poor basis for a personality profile.
- *
- * Uses single-pass reservoir sampling (Algorithm R) so each chunk document is
- * read exactly once. The previous `.collect()` read every chunk of every
- * candidate episode, which for ten long episodes is tens of thousands of
- * documents and exceeds Convex's per-transaction read limit.
+ * A separate function on purpose: Convex permits only one paginated query per
+ * function execution, so counting and sampling cannot share an execution. A
+ * plain `for await` needs no pagination and therefore costs nothing extra.
  */
-export const getProfileSourceData = internalQuery({
+export const countEpisodeChunks = internalQuery({
+  args: {
+    episodeId: v.id("episodes"),
+  },
+  handler: async (ctx, args): Promise<number> => {
+    // Plain iteration, not `.paginate()`: it needs no pagination budget, which
+    // is why counting can share an execution with nothing else.
+    const chunks = ctx.db
+      .query("transcriptChunks")
+      .withIndex("by_episode_start_time", (q) =>
+        q.eq("episodeId", args.episodeId),
+      );
+
+    let total = 0;
+    for await (const chunk of chunks) {
+      if (chunk._id) total += 1;
+    }
+
+    return total;
+  },
+});
+
+/**
+ * Samples an episode by taking the first chunk of each of
+ * `PROFILE_SAMPLE_TARGET` equal-width windows spanning the whole episode.
+ *
+ * Even coverage requires knowing the length, so this is a second pass over the
+ * episode (see getProfileSourceData). It is its own function because each pass
+ * needs its own execution.
+ *
+ * Uses plain iteration rather than `.paginate()`: Convex permits only one
+ * `paginate()` call per function execution, so a paging loop cannot walk a
+ * long episode at all.
+ *
+ * A plain stride (`index % stride`) is subtly wrong here: it samples the opening
+ * densely and stops short of the closing minutes, so the end of a long episode
+ * is never represented. Equal-width windows always include the final window.
+ */
+export const sampleEpisodeChunks = internalQuery({
+  args: {
+    episodeId: v.id("episodes"),
+    total: v.number(),
+  },
+  handler: async (ctx, args): Promise<string[]> => {
+    if (args.total <= 0) return [];
+
+    const sampled: string[] = [];
+    const takenWindows = new Set<number>();
+    let index = 0;
+
+    for await (const chunk of ctx.db
+      .query("transcriptChunks")
+      .withIndex("by_episode_start_time", (q) =>
+        q.eq("episodeId", args.episodeId),
+      )) {
+      // Which equal-width window this chunk starts. Monotonic in `index`, so
+      // each window is entered exactly once.
+      const window = Math.floor((index * PROFILE_SAMPLE_TARGET) / args.total);
+      if (!takenWindows.has(window)) {
+        takenWindows.add(window);
+        sampled.push(chunk.text);
+        if (sampled.length >= PROFILE_SAMPLE_TARGET) break;
+      }
+      index += 1;
+    }
+
+    return sampled;
+  },
+});
+
+/** Most recent episodes for a podcaster, newest first. */
+export const listPodcasterEpisodes = internalQuery({
   args: {
     podcasterId: v.id("podcasters"),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<Array<{ id: Id<"episodes">; title: string }>> => {
     const episodes = await ctx.db
       .query("episodes")
       .withIndex("by_podcaster", (q) => q.eq("podcasterId", args.podcasterId))
       .order("desc")
       .take(MAX_PROFILE_SOURCE_EPISODES);
 
-    const withSamples = await Promise.all(
-      episodes.map(async (episode) => {
-        const reservoir: string[] = [];
-        // 0-based index of the current chunk across the whole episode.
-        let seen = 0;
+    return episodes.map((episode) => ({ id: episode._id, title: episode.title }));
+  },
+});
 
-        for await (const chunk of ctx.db
-          .query("transcriptChunks")
-          .withIndex("by_episode_start_time", (q) =>
-            q.eq("episodeId", episode._id),
-          )) {
-          if (reservoir.length < PROFILE_SAMPLE_TARGET) {
-            reservoir.push(chunk.text);
-          } else {
-            // Algorithm R: draw j uniformly from [0, seen], and replace slot j
-            // when j is inside the reservoir. Drawing from [0, seen] (not
-            // [0, K]) is what makes the sample uniform over the episode —
-            // drawing from the narrower range silently biases the sample
-            // toward the final chunks.
-            const j = deterministicBelow(seen, seen + 1);
-            if (j < PROFILE_SAMPLE_TARGET) {
-              reservoir[j] = chunk.text;
-            }
-          }
-          seen += 1;
+/**
+ * Samples spread across each episode rather than the first/last N chunks.
+ *
+ * Taking the 5 most recent chunks sampled only the final ~25 seconds of an
+ * episode, which is a poor basis for a personality profile.
+ *
+ * Even coverage needs the length, so this counts then samples. A reservoir
+ * (Algorithm R) was tried first and rejected: driving the draw from a
+ * deterministic hash of the chunk index is not a uniform random variable, so the
+ * sample still skewed measurably toward the opening of long episodes.
+ *
+ * This is an action rather than a query on purpose. A query's `ctx.runQuery`
+ * shares the caller's execution, so orchestrating several episodes from a query
+ * concentrates every read into one transaction. As an action, each `runQuery`
+ * below is its own execution, which keeps the per-transaction read cost of one
+ * episode independent of how many episodes are sampled.
+ */
+export const getProfileSourceData = internalAction({
+  args: {
+    podcasterId: v.id("podcasters"),
+  },
+  handler: async (ctx, args): Promise<ProfileSourceData> => {
+    const episodes = await ctx.runQuery(
+      internal.profiles.listPodcasterEpisodes,
+      { podcasterId: args.podcasterId },
+    );
+
+    const withSamples: EpisodeProfileSource[] = await Promise.all(
+      episodes.map(async (episode): Promise<EpisodeProfileSource> => {
+        const total: number = await ctx.runQuery(
+          internal.profiles.countEpisodeChunks,
+          { episodeId: episode.id },
+        );
+
+        if (total === 0) {
+          return { title: episode.title, sampleText: "" };
         }
 
-        return { title: episode.title, sampleText: reservoir.join(" ") };
+        const sampled: string[] = await ctx.runQuery(
+          internal.profiles.sampleEpisodeChunks,
+          { episodeId: episode.id, total },
+        );
+
+        return { title: episode.title, sampleText: sampled.join(" ") };
       }),
     );
 
     return { episodes: withSamples };
   },
 });
-
-/** Deterministic value in [0, bound) derived from `seed`, for stable sampling. */
-function deterministicBelow(seed: number, bound: number): number {
-  let h = (seed ^ 0x9e3779b9) >>> 0;
-  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b) >>> 0;
-  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35) >>> 0;
-  h = (h ^ (h >>> 16)) >>> 0;
-  return h % bound;
-}
 
 export const getConversationMessages = internalQuery({
   args: {

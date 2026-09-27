@@ -276,6 +276,81 @@ describe("POST /api/chat validation", () => {
     });
   });
 
+  /**
+   * The abort guard, the success path, and the catch can all reach the persist.
+   * A duplicate would store the same assistant turn twice and then replay it
+   * into the next prompt, so exactly one write must happen on every path.
+   */
+  it("persists the assistant reply exactly once on success", async () => {
+    const res = await POST(
+      chatRequest({
+        episodeId: "episode_1",
+        podcasterId: "podcaster_1",
+        timestamp: 30,
+        message: "hi",
+      }),
+    );
+    await drainStream(res);
+    await vi.waitFor(() => {
+      const calls = mutationMock.mock.calls.filter(
+        (c) => c[0] === apiRefs.chat.appendAssistantMessage,
+      );
+      expect(calls).toHaveLength(1);
+      expect((calls[0][1] as { content: string }).content).toBe("hello");
+    });
+  });
+
+  it("persists partial output exactly once when the provider errors", async () => {
+    async function* failingStream(): AsyncGenerator<string, void, unknown> {
+      yield "partial";
+      throw new Error("socket hang up");
+    }
+    streamMock.mockReturnValue(failingStream());
+
+    const res = await POST(
+      chatRequest({
+        episodeId: "episode_1",
+        podcasterId: "podcaster_1",
+        timestamp: 30,
+        message: "hi",
+      }),
+    );
+    expect(res.status).toBe(200);
+    // Consume once: the assertion needs the frames, the drain would read the
+    // same body twice.
+    const text = await res.text();
+    expect(text).toContain('"type":"error"');
+
+    const calls = mutationMock.mock.calls.filter(
+      (c) => c[0] === apiRefs.chat.appendAssistantMessage,
+    );
+    // Partial output survives, and is stored once.
+    expect(calls).toHaveLength(1);
+    expect((calls[0][1] as { content: string }).content).toBe("partial");
+  });
+
+  it("does not persist an empty response", async () => {
+    async function* emptyStream(): AsyncGenerator<string, void, unknown> {
+      // no tokens
+    }
+    streamMock.mockReturnValue(emptyStream());
+
+    const res = await POST(
+      chatRequest({
+        episodeId: "episode_1",
+        podcasterId: "podcaster_1",
+        timestamp: 30,
+        message: "hi",
+      }),
+    );
+    await drainStream(res);
+
+    const calls = mutationMock.mock.calls.filter(
+      (c) => c[0] === apiRefs.chat.appendAssistantMessage,
+    );
+    expect(calls).toHaveLength(0);
+  });
+
   it("returns 403 when Convex reports an ownership violation", async () => {
     mutationMock.mockImplementation(async (ref: string) => {
       if (ref === apiRefs.users.ensureUser) return "user_doc";
