@@ -16,7 +16,17 @@ describe("readApiError", () => {
       headers: { "Content-Type": "text/html" },
     });
     expect(await readApiError(response)).toBe(
-      "The server returned HTTP 500. Check the terminal running npm run dev.",
+      "Oops, someone stole the apple. Please try again while I find another one.",
+    );
+  });
+
+  it("hides a technical JSON error from the user", async () => {
+    const response = Response.json(
+      { error: "Convex deployment disabled: spending limit exceeded", errorId: "abc123" },
+      { status: 503 },
+    );
+    expect(await readApiError(response)).toBe(
+      "Oops, someone stole the apple. Please try again while I find another one.",
     );
   });
 });

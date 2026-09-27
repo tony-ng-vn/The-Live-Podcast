@@ -40,6 +40,7 @@ const {
   mutationMock,
   actionMock,
   queryMock,
+  recordServerErrorMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn<() => Promise<{ userId: string | null }>>(),
   currentUserMock: vi.fn(),
@@ -54,6 +55,7 @@ const {
   mutationMock: vi.fn(),
   actionMock: vi.fn(),
   queryMock: vi.fn(),
+  recordServerErrorMock: vi.fn().mockResolvedValue("error-test-id"),
 }));
 
 vi.mock("@clerk/nextjs/server", () => ({
@@ -67,7 +69,11 @@ vi.mock("@/lib/convex/client", () => ({
   isConvexConfigurationError: () => false,
 }));
 
-import { POST } from "@/app/api/episodes/route";
+vi.mock("@/lib/server-error", () => ({
+  recordServerError: recordServerErrorMock,
+}));
+
+import { GET, POST } from "@/app/api/episodes/route";
 
 describe("POST /api/episodes validation", () => {
   beforeEach(() => {
@@ -77,6 +83,7 @@ describe("POST /api/episodes validation", () => {
     mutationMock.mockReset();
     actionMock.mockReset();
     queryMock.mockReset();
+    recordServerErrorMock.mockClear();
     getConvexClientMock.mockReset();
 
     mutationMock.mockResolvedValue("user_doc");
@@ -262,7 +269,8 @@ describe("POST /api/episodes validation", () => {
     const res = await POST(req);
     expect(res.status).toBe(422);
     const body = await res.json() as { error: string };
-    expect(body.error).toContain("Transcript service error");
+    expect(body.error).toBe("This video does not have captions I can read yet.");
+    expect(recordServerErrorMock).toHaveBeenCalledOnce();
   });
 
   it("returns 503 for unexpected Convex ingest errors", async () => {
@@ -277,6 +285,23 @@ describe("POST /api/episodes validation", () => {
 
     const res = await POST(req);
     expect(res.status).toBe(503);
-    await expect(res.json()).resolves.toEqual({ error: message });
+    await expect(res.json()).resolves.toEqual({
+      error: "Oops, someone stole the apple. Please try again while I find another one.",
+      errorId: "error-test-id",
+    });
+    expect(recordServerErrorMock).toHaveBeenCalledWith("episodes.ingest", expect.any(Error));
+  });
+
+  it("keeps library backend errors in the agent log and off the page", async () => {
+    queryMock.mockRejectedValueOnce(new Error("Convex deployment disabled"));
+
+    const res = await GET();
+
+    expect(res.status).toBe(503);
+    await expect(res.json()).resolves.toEqual({
+      error: "Oops, someone stole the apple. Please try again while I find another one.",
+      errorId: "error-test-id",
+    });
+    expect(recordServerErrorMock).toHaveBeenCalledWith("episodes.list", expect.any(Error));
   });
 });
