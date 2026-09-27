@@ -1,3 +1,22 @@
+## v0.5.1
+
+2026-09-27
+
+**Episodes**
+
+- Videos with captions that only provide start times can now be added, with each cue held until the next cue and the final cue held until the video finishes.
+
+**Models**
+
+- Model limits, invalid keys, unavailable credits, and interrupted answers now explain how to recover in Model settings.
+- Failed model requests no longer leave a pending question in saved history when it is still the latest question.
+
+**Diagnostics**
+
+- Errors now describe the failed step in plain language while keeping technical details in the private log.
+
+---
+
 ## v0.5.0
 
 2026-09-27

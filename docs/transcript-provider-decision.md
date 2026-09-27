@@ -14,3 +14,16 @@ Revisit this when a reliable single source fits the budget and uptime needs.
 A paid rotating residential proxy could let the existing Python service run from a cloud host.
 A home-hosted service through Cloudflare Tunnel could use the current library without a proxy subscription, but adding videos would depend on that computer staying online.
 Before switching, test timed captions, unavailable videos, languages, rate limits, and the pause-point boundary against real videos.
+
+## Captions without end times
+
+A production import on 2026-09-27 returned 208 SerpApi captions with `start_ms` and no `end_ms`.
+The same response shape also appeared with `type=asr`.
+The parser now uses the next cue's start as the current cue's completion boundary when an end is absent.
+This is an approximation based on sequential cues, not an exact word completion time.
+Explicit provider end times remain unchanged.
+The final caption has no next cue, so it carries `requiresVideoEnd` and stays out of chat context until the player reports that the video ended.
+The client sends the completed video duration, and the database checks that the pause timestamp reaches that duration before including the final caption.
+No additional transcript provider or metadata request is needed.
+Malformed text, negative times, non-finite times, and non-increasing cue starts still fail validation.
+Future single-provider research should include exact end timing and overlapping captions, because timing quality affects the pause-point promise.

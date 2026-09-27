@@ -4,22 +4,24 @@ import {
   getAuthenticatedConvexClient,
   api,
 } from "@/lib/convex/client";
+import { normalizeCaptions, type Caption } from "@/lib/transcript-captions";
+import type { TranscriptSegment as TimedSegment } from "../../../../convex/transcript";
 import { extractYouTubeId } from "@/lib/youtube";
-import { FRIENDLY_SERVER_ERROR } from "@/lib/api-error";
+import { failureFromError, type PublicFailureCode } from "@/lib/api-error";
 import { recordServerError } from "@/lib/server-error";
 
 class TranscriptServiceError extends Error {
+  readonly code: PublicFailureCode;
   constructor(message: string, readonly status: number) {
     super(message);
+    this.code = status === 422 ? "TRANSCRIPT_NOT_FOUND" : "TRANSCRIPT_UNAVAILABLE";
   }
 }
 
-async function serviceFailure(source: string, error: unknown): Promise<Response> {
+async function serviceFailure(source: string, error: unknown, fallback: PublicFailureCode): Promise<Response> {
   const errorId = await recordServerError(source, error);
-  return NextResponse.json(
-    { error: FRIENDLY_SERVER_ERROR, errorId },
-    { status: 503 },
-  );
+  const { code, error: message, status } = failureFromError(error, fallback);
+  return NextResponse.json({ error: message, code, errorId }, { status });
 }
 
 interface TranscriptSegment {
@@ -36,7 +38,7 @@ interface TranscriptServiceResponse {
 interface SerpApiTranscriptResponse {
   search_metadata?: { status?: string };
   error?: string;
-  transcript?: Array<{ start_ms?: number; end_ms?: number; snippet?: string }>;
+  transcript?: Caption[];
 }
 
 interface YouTubeOEmbedResponse {
@@ -67,7 +69,7 @@ async function withTimeout<T>(
 
 async function fetchTranscriptSegments(
   videoId: string,
-): Promise<Array<{ text: string; offset: number; duration: number }>> {
+): Promise<TimedSegment[]> {
   if (process.env.TRANSCRIPT_PROVIDER === "serpapi") {
     return fetchSerpApiTranscriptSegments(videoId);
   }
@@ -123,7 +125,7 @@ async function fetchTranscriptSegments(
 
 async function fetchSerpApiTranscriptSegments(
   videoId: string,
-): Promise<Array<{ text: string; offset: number; duration: number }>> {
+): Promise<TimedSegment[]> {
   const apiKey = process.env.SERPAPI_API_KEY;
   if (!apiKey) {
     throw new TranscriptServiceError("SerpApi transcript key is not configured", 503);
@@ -161,15 +163,7 @@ async function fetchSerpApiTranscriptSegments(
     throw new TranscriptServiceError(`No transcript segments returned for video (${videoId})`, 422);
   }
 
-  return data.transcript.map((segment) => {
-    const { start_ms: start, end_ms: end, snippet } = segment;
-    if (typeof start !== "number" || typeof end !== "number" ||
-        !Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start ||
-        typeof snippet !== "string" || !snippet.trim()) {
-      throw new TranscriptServiceError(`Invalid SerpApi caption timing for video ${videoId}`, 503);
-    }
-    return { text: snippet, offset: start / 1000, duration: (end - start) / 1000 };
-  });
+  return normalizeCaptions(data.transcript);
 }
 
 async function fetchYouTubeMetadata(videoId: string): Promise<YouTubeOEmbedResponse | null> {
@@ -207,7 +201,7 @@ export async function POST(request: Request): Promise<Response> {
       "Timed out while checking authentication",
     );
   } catch (error) {
-    return serviceFailure("episodes.auth", error);
+    return serviceFailure("episodes.auth", error, "SIGN_IN_UNAVAILABLE");
   }
   const { userId, getToken } = clerkAuth;
   if (!userId) {
@@ -261,23 +255,16 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
   } catch (error) {
-    return serviceFailure("episodes.duplicate-check", error);
+    return serviceFailure("episodes.duplicate-check", error, "LIBRARY_UNAVAILABLE");
   }
 
   // Fetch before Convex ingestion so the same timed segments work locally and in production.
-  let segments: Array<{ text: string; offset: number; duration: number }>;
+  let segments: TimedSegment[];
   const metadata = await fetchYouTubeMetadata(videoId);
   try {
     segments = await fetchTranscriptSegments(videoId);
   } catch (transcriptError) {
-    const errorId = await recordServerError("episodes.transcript", transcriptError);
-    if (transcriptError instanceof TranscriptServiceError && transcriptError.status === 422) {
-      return NextResponse.json(
-        { error: "This video does not have captions I can read yet.", errorId },
-        { status: 422 },
-      );
-    }
-    return NextResponse.json({ error: FRIENDLY_SERVER_ERROR, errorId }, { status: 503 });
+    return serviceFailure("episodes.transcript", transcriptError, "TRANSCRIPT_UNAVAILABLE");
   }
 
   try {
@@ -318,19 +305,7 @@ export async function POST(request: Request): Promise<Response> {
     if (message.includes("Invalid YouTube URL")) {
       return NextResponse.json({ error: "Please enter a valid YouTube URL." }, { status: 400 });
     }
-    if (
-      message.includes("No transcript") ||
-      message.includes("Transcript") ||
-      message.includes("captions")
-    ) {
-      const errorId = await recordServerError("episodes.ingest", error);
-      return NextResponse.json(
-        { error: "This video does not have captions I can read yet.", errorId },
-        { status: 422 },
-      );
-    }
-
-    return serviceFailure("episodes.ingest", error);
+    return serviceFailure("episodes.ingest", error, "VIDEO_SAVE_UNAVAILABLE");
   }
 }
 
@@ -339,7 +314,7 @@ export async function GET(): Promise<Response> {
   try {
     clerkAuth = await auth();
   } catch (error) {
-    return serviceFailure("episodes.auth", error);
+    return serviceFailure("episodes.auth", error, "SIGN_IN_UNAVAILABLE");
   }
   const { userId, getToken } = clerkAuth;
   if (!userId) {
@@ -352,6 +327,6 @@ export async function GET(): Promise<Response> {
 
     return NextResponse.json(episodes, { status: 200 });
   } catch (error) {
-    return serviceFailure("episodes.list", error);
+    return serviceFailure("episodes.list", error, "LIBRARY_UNAVAILABLE");
   }
 }

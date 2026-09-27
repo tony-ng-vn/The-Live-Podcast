@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { publicFailure, readApiError } from "@/lib/api-error";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
@@ -33,6 +34,7 @@ export default function WatchPage() {
   const [voiceMode, setVoiceMode] = useState(false);
   const [micError, setMicError] = useState(false);
   const [chatTimestamp, setChatTimestamp] = useState(0);
+  const [videoDuration, setVideoDuration] = useState<number | undefined>();
   const [, setConversationId] = useState<string | null>(null);
   const playerRef = useRef<YouTubePlayerHandle>(null);
   const jumpInGuardRef = useRef(false);
@@ -53,7 +55,7 @@ export default function WatchPage() {
         const res = await fetch(`/api/episodes/${params.id}`);
         if (!res.ok) {
           setError(true);
-          toast.error("Failed to load episode.");
+          toast.error(await readApiError(res, "VIDEO_LOAD_UNAVAILABLE"));
           setLoading(false);
           return;
         }
@@ -61,7 +63,7 @@ export default function WatchPage() {
         setEpisode(data);
       } catch {
         setError(true);
-        toast.error("Failed to load episode. Please check your connection.");
+        toast.error(publicFailure("VIDEO_LOAD_UNAVAILABLE").error);
       } finally {
         setLoading(false);
       }
@@ -76,8 +78,10 @@ export default function WatchPage() {
     jumpInGuardRef.current = true;
 
     if (playerRef.current) {
+      const duration = playerRef.current.getCompletedDuration();
       playerRef.current.pause();
       setChatTimestamp(playerRef.current.getCurrentTime());
+      setVideoDuration(Number.isFinite(duration) && duration > 0 ? duration : undefined);
     }
 
     // Check if voice is supported (Chrome-like browsers)
@@ -279,6 +283,7 @@ export default function WatchPage() {
                     episodeId={episode.id}
                     podcasterId={episode.podcaster.id}
                     currentTimestamp={chatTimestamp}
+                    videoDuration={videoDuration}
                     onMicError={handleMicError}
                     onConversationIdChange={setConversationId}
                     onUserInteraction={pauseVideoForInteraction}
@@ -290,6 +295,7 @@ export default function WatchPage() {
                     episodeId={episode.id}
                     podcasterId={episode.podcaster.id}
                     currentTimestamp={chatTimestamp}
+                    videoDuration={videoDuration}
                     onConversationIdChange={setConversationId}
                     onUserInteraction={pauseVideoForInteraction}
                   />

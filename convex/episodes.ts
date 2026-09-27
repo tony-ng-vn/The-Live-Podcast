@@ -140,6 +140,7 @@ const segmentValidator = v.object({
   text: v.string(),
   offset: v.number(),
   duration: v.number(),
+  requiresVideoEnd: v.optional(v.boolean()),
 });
 
 export const ingestEpisode: ReturnType<typeof action> = action({
@@ -283,6 +284,7 @@ export const createEpisodeWithChunks = internalMutation({
           text: v.string(),
           startTime: v.number(),
           endTime: v.number(),
+          requiresVideoEnd: v.optional(v.boolean()),
         }))),
       }),
     ),

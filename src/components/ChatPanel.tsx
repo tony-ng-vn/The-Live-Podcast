@@ -9,6 +9,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
+import { apiErrorMessage, publicFailure } from "@/lib/api-error";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -21,12 +22,13 @@ type ChatStreamEvent =
   | { type: "conversation"; conversationId: string }
   | { type: "token"; content: string }
   | { type: "done" }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string; code?: string };
 
 interface ChatPanelProps {
   episodeId: string;
   podcasterId: string;
   currentTimestamp: number;
+  videoDuration?: number;
   onConversationIdChange?: (conversationId: string | null) => void;
   onUserInteraction?: () => void;
 }
@@ -35,6 +37,7 @@ export default function ChatPanel({
   episodeId,
   podcasterId,
   currentTimestamp,
+  videoDuration,
   onConversationIdChange,
   onUserInteraction,
 }: ChatPanelProps) {
@@ -86,6 +89,7 @@ export default function ChatPanel({
             episodeId,
             podcasterId,
             timestamp: currentTimestamp,
+            videoDuration,
             message: userMessage,
             conversationId,
           }),
@@ -95,9 +99,14 @@ export default function ChatPanel({
           const payload = (await res.json().catch(() => null)) as {
             error?: string;
             code?: string;
+            conversationId?: string;
           } | null;
+          if (payload?.conversationId) {
+            setConversationId(payload.conversationId);
+            onConversationIdChange?.(payload.conversationId);
+          }
           const errorMessage =
-            payload?.error ?? "Failed to get a response. Please try again.";
+            apiErrorMessage(payload, res.status, "MODEL_UNAVAILABLE");
 
           toast.error(errorMessage);
           setMessages((prev) => {
@@ -107,7 +116,7 @@ export default function ChatPanel({
               content:
                 updated[assistantIndex].content || errorMessage,
               error: true,
-              modelSettingsNeeded: payload?.code === "MODEL_KEY_REQUIRED",
+              modelSettingsNeeded: publicFailure(payload?.code).modelSettingsNeeded,
             };
             return updated;
           });
@@ -159,14 +168,17 @@ export default function ChatPanel({
 
               if (parsed.type === "error") {
                 streamFailed = true;
-                toast.error(parsed.message);
+                const failure = publicFailure(parsed.code, "MODEL_UNAVAILABLE");
+                toast.error(failure.error);
                 setMessages((prev) => {
                   const updated = [...prev];
                   updated[assistantIndex] = {
                     role: "assistant",
                     content:
-                      updated[assistantIndex].content || parsed.message,
+                      updated[assistantIndex].content
+                        ? `${updated[assistantIndex].content}\n\n${failure.error}` : failure.error,
                     error: true,
+                    modelSettingsNeeded: failure.modelSettingsNeeded,
                   };
                   return updated;
                 });
@@ -209,7 +221,7 @@ export default function ChatPanel({
         setStreaming(false);
       }
     },
-    [episodeId, podcasterId, currentTimestamp, conversationId, onConversationIdChange],
+    [episodeId, podcasterId, currentTimestamp, videoDuration, conversationId, onConversationIdChange],
   );
 
   const sendMessage = useCallback(async () => {
@@ -302,7 +314,7 @@ export default function ChatPanel({
               {msg.error && (
                 <div className="mt-1 flex items-center gap-2">
                   <span className="text-xs text-red-500 dark:text-red-400">
-                    Failed to send
+                    Could not finish answering
                   </span>
                   <button
                     type="button"

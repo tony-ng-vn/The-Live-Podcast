@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { FRIENDLY_SERVER_ERROR, readApiError } from "@/lib/api-error";
+import { publicFailure, readApiError, PublicRequestError } from "@/lib/api-error";
 
 type Provider = "openrouter" | "openai";
 type ModelSettings = {
@@ -29,7 +29,7 @@ export default function ModelSettingsPage() {
     async function load() {
       try {
         const response = await fetch("/api/model-settings");
-        if (!response.ok) throw new Error(await readApiError(response));
+        if (!response.ok) throw new PublicRequestError(await readApiError(response, "MODEL_SETTINGS_UNAVAILABLE"));
         const saved = await response.json() as ModelSettings;
         if (!active) return;
         setSettings(saved);
@@ -38,7 +38,7 @@ export default function ModelSettingsPage() {
           setModel(saved.model || DEFAULT_MODELS[saved.provider]);
         }
       } catch (error) {
-        if (active) setMessage(error instanceof Error ? error.message : FRIENDLY_SERVER_ERROR);
+        if (active) setMessage(error instanceof PublicRequestError ? error.message : publicFailure("MODEL_SETTINGS_UNAVAILABLE").error);
       } finally {
         if (active) setLoading(false);
       }
@@ -64,12 +64,12 @@ export default function ModelSettingsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider, model: model.trim(), ...(apiKey ? { apiKey } : {}) }),
       });
-      if (!response.ok) throw new Error(await readApiError(response));
+      if (!response.ok) throw new PublicRequestError(await readApiError(response, "MODEL_SETTINGS_UNAVAILABLE"));
       setSettings(await response.json() as ModelSettings);
       setApiKey("");
       setMessage("Your model settings are saved.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : FRIENDLY_SERVER_ERROR);
+      setMessage(error instanceof PublicRequestError ? error.message : publicFailure("MODEL_SETTINGS_UNAVAILABLE").error);
     } finally {
       setSaving(false);
     }
@@ -80,12 +80,12 @@ export default function ModelSettingsPage() {
     setMessage("");
     try {
       const response = await fetch(`/api/model-settings?provider=${provider}`, { method: "DELETE" });
-      if (!response.ok) throw new Error(await readApiError(response));
+      if (!response.ok) throw new PublicRequestError(await readApiError(response, "MODEL_SETTINGS_UNAVAILABLE"));
       setSettings(await response.json() as ModelSettings);
       setApiKey("");
       setMessage(`${provider === "openai" ? "OpenAI" : "OpenRouter"} key removed.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : FRIENDLY_SERVER_ERROR);
+      setMessage(error instanceof PublicRequestError ? error.message : publicFailure("MODEL_SETTINGS_UNAVAILABLE").error);
     } finally {
       setSaving(false);
     }

@@ -1,5 +1,7 @@
 import { LLMProvider, Message, LLMOptions } from "./types";
 
+import { modelProviderError } from "./provider-error";
+
 export class OpenRouterProvider implements LLMProvider {
   private apiKey: string;
   private baseUrl: string;
@@ -47,9 +49,7 @@ export class OpenRouterProvider implements LLMProvider {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      const errorMsg = `OpenRouter API error: ${response.status} ${response.statusText}${errorData.error?.message ? ` - ${errorData.error.message}` : ""}`;
-      console.error(`[LLM:OpenRouter] ${errorMsg}`);
-      throw new Error(errorMsg);
+      throw modelProviderError("OpenRouter", response.status, errorData.error, this.apiKey, response.statusText);
     }
 
     const data = await response.json();
@@ -94,9 +94,7 @@ export class OpenRouterProvider implements LLMProvider {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      const errorMsg = `OpenRouter API error: ${response.status} ${response.statusText}${errorData.error?.message ? ` - ${errorData.error.message}` : ""}`;
-      console.error(`[LLM:OpenRouter] ${errorMsg}`);
-      throw new Error(errorMsg);
+      throw modelProviderError("OpenRouter", response.status, errorData.error, this.apiKey, response.statusText);
     }
 
     const reader = response.body?.getReader();
@@ -126,16 +124,16 @@ export class OpenRouterProvider implements LLMProvider {
         const data = trimmed.slice(6);
         if (data === "[DONE]") return;
 
-        try {
-          const parsed = JSON.parse(data);
-          const content = parsed.choices[0]?.delta?.content;
-          if (content) {
-            chunkCount++;
-            fullResponse += content;
-            yield content;
-          }
-        } catch {
-          // Silent catch for potential heartbeat or malformed frames
+        let parsed;
+        try { parsed = JSON.parse(data); } catch { continue; }
+        if (parsed.error) {
+          throw modelProviderError("OpenRouter", Number(parsed.error.code) || 503, parsed.error, this.apiKey);
+        }
+        const content = parsed.choices?.[0]?.delta?.content;
+        if (content) {
+          chunkCount++;
+          fullResponse += content;
+          yield content;
         }
       }
     }

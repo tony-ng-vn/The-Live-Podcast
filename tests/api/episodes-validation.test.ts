@@ -314,6 +314,34 @@ describe("POST /api/episodes validation", () => {
     expect(transcriptCall?.[1]?.headers ?? {}).not.toHaveProperty("X-Transcript-Token");
   });
 
+  it("imports start-only captions without revealing the unfinished final caption", async () => {
+    vi.stubEnv("TRANSCRIPT_PROVIDER", "serpapi");
+    vi.stubEnv("SERPAPI_API_KEY", "test-key");
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (input: string | URL | Request) => {
+      if (String(input).includes("/oembed")) return { ok: false };
+      return { ok: true, json: async () => ({
+        search_metadata: { status: "Success" },
+        transcript: [
+          { start_ms: 0, snippet: "First caption" },
+          { start_ms: 8000, snippet: "Final caption" },
+        ],
+      }) };
+    }));
+
+    const res = await POST(new Request("http://localhost/api/episodes", {
+      method: "POST",
+      body: JSON.stringify({ url: VALID_URL }),
+    }));
+
+    expect(res.status).toBe(201);
+    expect(actionMock).toHaveBeenCalledWith(apiRefs.episodes.ingestEpisode, expect.objectContaining({
+      segments: [
+        { text: "First caption", offset: 0, duration: 8 },
+        { text: "Final caption", offset: 8, duration: 0, requiresVideoEnd: true },
+      ],
+    }));
+  });
+
   it("records SerpApi failures without showing the provider error to the user", async () => {
     vi.stubEnv("TRANSCRIPT_PROVIDER", "serpapi");
     vi.stubEnv("SERPAPI_API_KEY", "test-key");
@@ -329,7 +357,7 @@ describe("POST /api/episodes validation", () => {
     }));
 
     expect(res.status).toBe(503);
-    expect((await res.json() as { error: string }).error).toContain("someone stole the apple");
+    expect(await res.json()).toMatchObject({ code: "TRANSCRIPT_UNAVAILABLE", error: expect.stringContaining("captions right now") });
     expect(recordServerErrorMock).toHaveBeenCalledWith("episodes.transcript", expect.any(Error));
     expect(actionMock).not.toHaveBeenCalled();
   });
@@ -402,7 +430,8 @@ describe("POST /api/episodes validation", () => {
     const res = await POST(req);
     expect(res.status).toBe(503);
     await expect(res.json()).resolves.toEqual({
-      error: "Oops, someone stole the apple. Please try again while I find another one.",
+      error: "I could not finish adding this video. Check your library before trying again.",
+      code: "VIDEO_SAVE_UNAVAILABLE",
       errorId: "error-test-id",
     });
     expect(recordServerErrorMock).toHaveBeenCalledWith("episodes.ingest", expect.any(Error));
@@ -415,7 +444,8 @@ describe("POST /api/episodes validation", () => {
 
     expect(res.status).toBe(503);
     await expect(res.json()).resolves.toEqual({
-      error: "Oops, someone stole the apple. Please try again while I find another one.",
+      error: "Your library could not load right now. Please refresh to try again.",
+      code: "LIBRARY_UNAVAILABLE",
       errorId: "error-test-id",
     });
     expect(recordServerErrorMock).toHaveBeenCalledWith("episodes.list", expect.any(Error));
@@ -430,7 +460,8 @@ describe("POST /api/episodes validation", () => {
 
     expect(res.status).toBe(503);
     await expect(res.json()).resolves.toEqual({
-      error: "Oops, someone stole the apple. Please try again while I find another one.",
+      error: "This video could not load right now. Please try opening it again.",
+      code: "VIDEO_LOAD_UNAVAILABLE",
       errorId: "error-test-id",
     });
     expect(recordServerErrorMock).toHaveBeenCalledWith("episodes.detail", expect.any(Error));

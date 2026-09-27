@@ -76,4 +76,19 @@ describe('OpenRouterProvider', () => {
     const provider = new OpenRouterProvider(mockOptions);
     await expect(provider.chat([])).rejects.toThrow('OpenRouter API error: 401 Unauthorized - Invalid API Key');
   });
+
+  it('identifies a streaming rate limit without exposing the provider response to the UI', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      statusText: 'Too Many Requests',
+      json: () => Promise.resolve({ error: { message: 'Provider returned error' } }),
+    });
+
+    const provider = new OpenRouterProvider(mockOptions);
+    await expect(provider.stream([{ role: 'user', content: 'hi' }]).next()).rejects.toMatchObject({
+      code: 'MODEL_RATE_LIMITED',
+      message: expect.stringContaining('429 Too Many Requests'),
+    });
+  });
 });

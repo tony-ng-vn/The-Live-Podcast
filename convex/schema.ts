@@ -49,6 +49,7 @@ export default defineSchema({
       text: v.string(),
       startTime: v.number(),
       endTime: v.number(),
+      requiresVideoEnd: v.optional(v.boolean()),
     }))),
     embedding: v.optional(v.array(v.float64())),
     embeddingSource: v.optional(v.string()),

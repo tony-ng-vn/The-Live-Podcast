@@ -59,7 +59,8 @@ Do not reuse a Convex HTTP client across signed-in users.
 
 ### Find server errors
 
-The app shows a short retry message to viewers when a service fails.
+The app gives viewers a short message for the failed step and a recovery action.
+The browser accepts known public error codes and hides raw server failures.
 During local development, the server writes the technical details to the ignored file `logs/app-errors.jsonl`.
 Each JSON line has a timestamp, source, error ID, message, and stack.
 To inspect the latest local records, run:
@@ -77,7 +78,7 @@ To inspect recent production errors through the authenticated Convex CLI, run:
 npx convex data serverErrors --prod --limit 20
 ```
 
-The ID shown to a viewer matches the `id` field in that table.
+Each failed API response includes an `errorId` that matches the `id` field in that table.
 Vercel also emits the redacted record with the `[app-error]` prefix.
 If Convex is unavailable, find the fallback record with:
 
@@ -85,7 +86,9 @@ If Convex is unavailable, find the fallback record with:
 vercel logs --environment production --level error --query '[app-error]' --no-branch
 ```
 
-The app gives the viewer the same retry message even when error storage fails.
+Error storage failures do not change the public message.
+Model rate limits, missing keys, invalid keys, unavailable credits, caption failures, library failures, and uncertain saves have separate safe messages.
+Changing a message does not restore an upstream model's free request capacity.
 
 ### Start the dev stack
 

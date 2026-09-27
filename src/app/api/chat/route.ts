@@ -4,7 +4,7 @@ import { createPersonalLLMProvider, getLLMProvider } from "@/lib/llm";
 import type { LLMProvider, Message } from "@/lib/llm/types";
 import { decryptModelKey } from "@/lib/model-credentials";
 import { readSavedModelSettings } from "@/lib/model-settings";
-import { FRIENDLY_SERVER_ERROR } from "@/lib/api-error";
+import { publicFailure, failureFromError, type PublicFailureCode } from "@/lib/api-error";
 import { recordServerError } from "@/lib/server-error";
 import {
   getAuthenticatedConvexClient,
@@ -18,6 +18,7 @@ interface ChatRequestBody {
   episodeId?: string;
   podcasterId?: string;
   timestamp?: number;
+  videoDuration?: number;
   message?: string;
   conversationId?: string;
 }
@@ -26,10 +27,15 @@ type ChatStreamEvent =
   | { type: "conversation"; conversationId: string }
   | { type: "token"; content: string }
   | { type: "done" }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string; code?: string };
 
 export async function POST(request: Request): Promise<Response> {
-  const { userId, getToken } = await auth();
+  let clerkAuth: Awaited<ReturnType<typeof auth>>;
+  try { clerkAuth = await auth(); } catch (error) {
+    const errorId = await recordServerError("chat.auth", error);
+    return NextResponse.json({ error: publicFailure("SIGN_IN_UNAVAILABLE").error, code: "SIGN_IN_UNAVAILABLE", errorId }, { status: 503 });
+  }
+  const { userId, getToken } = clerkAuth;
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -51,7 +57,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const { episodeId, podcasterId, timestamp, message, conversationId } = body;
+  const { episodeId, podcasterId, timestamp, videoDuration, message, conversationId } = body;
   const normalizedConversationId =
     typeof conversationId === "string" && conversationId.trim() !== ""
       ? conversationId
@@ -80,7 +86,9 @@ export async function POST(request: Request): Promise<Response> {
   if (
     typeof episodeId !== "string" ||
     typeof podcasterId !== "string" ||
-    typeof timestamp !== "number"
+    typeof timestamp !== "number" || !Number.isFinite(timestamp) || timestamp < 0 ||
+    (videoDuration !== undefined &&
+      (typeof videoDuration !== "number" || !Number.isFinite(videoDuration) || videoDuration <= 0))
   ) {
     return NextResponse.json(
       { error: "Invalid request body" },
@@ -114,7 +122,7 @@ export async function POST(request: Request): Promise<Response> {
     }
   } catch (error) {
     const errorId = await recordServerError("chat.model-settings", error);
-    return NextResponse.json({ error: FRIENDLY_SERVER_ERROR, errorId }, { status: 503 });
+    return NextResponse.json({ error: publicFailure("MODEL_SETTINGS_UNAVAILABLE").error, code: "MODEL_SETTINGS_UNAVAILABLE", errorId }, { status: 503 });
   }
 
   let convex;
@@ -130,7 +138,7 @@ export async function POST(request: Request): Promise<Response> {
       .catch(() => undefined);
   } catch (error) {
     const errorId = await recordServerError("chat.setup", error);
-    return NextResponse.json({ error: FRIENDLY_SERVER_ERROR, errorId }, { status: 503 });
+    return NextResponse.json({ error: publicFailure("CHAT_UNAVAILABLE").error, code: "CHAT_UNAVAILABLE", errorId }, { status: 503 });
   }
 
   const typedEpisodeId = asConvexId<"episodes">(episodeId);
@@ -141,6 +149,7 @@ export async function POST(request: Request): Promise<Response> {
       : asConvexId<"conversations">(normalizedConversationId);
 
   let activeConversationId: Id<"conversations">;
+  let activeMessageId: Id<"conversationMessages"> | undefined;
   try {
     const start = await convex.mutation(api.chat.startConversation, {
       userId,
@@ -151,11 +160,24 @@ export async function POST(request: Request): Promise<Response> {
       conversationId: typedConversationId,
     });
     activeConversationId = start.conversationId;
+    activeMessageId = start.messageId;
   } catch (error) {
     const errorId = await recordServerError("chat.conversation", error);
-    return NextResponse.json({ error: FRIENDLY_SERVER_ERROR, errorId }, { status: 503 });
+    return NextResponse.json({ error: publicFailure("CHAT_UNAVAILABLE").error, code: "CHAT_UNAVAILABLE", errorId }, { status: 503 });
   }
 
+  const rollbackQuestion = async () => {
+    if (!activeMessageId) return;
+    try {
+      await convex.mutation(api.chat.rollbackFailedQuestion, {
+        conversationId: activeConversationId, messageId: activeMessageId,
+      });
+    } catch (error) {
+      await recordServerError("chat.rollback", error);
+    }
+  };
+
+  let failureCode: PublicFailureCode = "CHAT_UNAVAILABLE";
   let llmMessages: Message[];
   let stream: AsyncGenerator<string, void, unknown>;
   try {
@@ -165,6 +187,7 @@ export async function POST(request: Request): Promise<Response> {
     const chunks = await convex.query(api.transcriptChunks.getChunksUpToTimestamp, {
       episodeId: typedEpisodeId,
       timestamp: typedTimestamp,
+      ...(videoDuration === undefined ? {} : { videoDuration }),
     });
 
     console.log(`[Chat:API] Found ${chunks.length} transcript chunks up to ${typedTimestamp}s`);
@@ -222,34 +245,12 @@ export async function POST(request: Request): Promise<Response> {
       console.log("[Chat:API] Full LLM message payload:", JSON.stringify(llmMessages, null, 2));
     }
 
+    failureCode = "MODEL_UNAVAILABLE";
     stream = llm.stream(llmMessages, selectedModel ? { model: selectedModel } : undefined);
 
     const first = await stream.next();
     if (first.done) {
-      await convex.mutation(api.chat.appendAssistantMessage, {
-        conversationId: activeConversationId,
-        content: "",
-        timestamp: typedTimestamp,
-      });
-
-      const emptyReadable = new ReadableStream({
-        start(controller) {
-          enqueueSseEvent(controller, {
-            type: "conversation",
-            conversationId: String(activeConversationId),
-          });
-          enqueueSseEvent(controller, { type: "done" });
-          controller.close();
-        },
-      });
-      return new Response(emptyReadable, {
-        status: 200,
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive",
-        },
-      });
+      throw Object.assign(new Error("Model returned no answer content"), { code: "MODEL_UNAVAILABLE" });
     }
 
     const firstToken = first.value;
@@ -277,6 +278,7 @@ export async function POST(request: Request): Promise<Response> {
             console.log("[Chat:API] Full assistant response:", fullContent);
           }
 
+          failureCode = "CHAT_SAVE_UNAVAILABLE";
           await convex.mutation(api.chat.appendAssistantMessage, {
             conversationId: convoId,
             content: fullContent,
@@ -286,7 +288,9 @@ export async function POST(request: Request): Promise<Response> {
           enqueueSseEvent(controller, { type: "done" });
         } catch (error) {
           await recordServerError("chat.stream", error);
-          enqueueSseEvent(controller, { type: "error", message: FRIENDLY_SERVER_ERROR });
+          await rollbackQuestion();
+          const failure = failureFromError(error, failureCode);
+          enqueueSseEvent(controller, { type: "error", message: failure.error, code: failure.code });
         } finally {
           controller.close();
         }
@@ -303,9 +307,11 @@ export async function POST(request: Request): Promise<Response> {
     });
   } catch (error) {
     const errorId = await recordServerError("chat.response", error);
+    await rollbackQuestion();
+    const failure = failureFromError(error, failureCode);
     return NextResponse.json(
-      { error: FRIENDLY_SERVER_ERROR, errorId },
-      { status: 503 }
+      { error: failure.error, code: failure.code, errorId, conversationId: activeConversationId },
+      { status: failure.status },
     );
   }
 }

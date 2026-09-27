@@ -27,6 +27,24 @@ describe("transcript pause boundary", () => {
     ]);
   });
 
+  it("holds a caption with no final timing until the player reaches the video end", () => {
+    const startOnly = chunkTranscript([
+      { text: "Earlier caption.", offset: 0, duration: 8 },
+      { text: "Final caption.", offset: 8, duration: 0, requiresVideoEnd: true },
+    ]);
+    expect(selectTranscriptUpToTimestamp(startOnly, 12)).toEqual([
+      { text: "Earlier caption.", startTime: 0, endTime: 8 },
+    ]);
+    expect(selectTranscriptUpToTimestamp(startOnly, 12, 20)).toEqual([
+      { text: "Earlier caption.", startTime: 0, endTime: 8 },
+    ]);
+    expect(selectTranscriptUpToTimestamp(startOnly, 20, 20)).toEqual([
+      { text: "Earlier caption.", startTime: 0, endTime: 8 },
+      { text: "Final caption.", startTime: 8, endTime: 20 },
+    ]);
+    expect(selectTranscriptUpToTimestamp(startOnly, 20, Number.NaN)).toHaveLength(1);
+  });
+
   it("does not reveal a legacy chunk that overlaps the pause point", () => {
     expect(selectTranscriptUpToTimestamp([
       { text: "Old unsplit text", startTime: 0, endTime: 6 },

@@ -7,6 +7,7 @@ export const getChunksUpToTimestamp = query({
   args: {
     episodeId: v.id("episodes"),
     timestamp: v.number(),
+    videoDuration: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const userId = await requireClerkUser(ctx.auth);
@@ -20,6 +21,6 @@ export const getChunksUpToTimestamp = query({
       )
       .collect();
 
-    return selectTranscriptUpToTimestamp(chunks, args.timestamp);
+    return selectTranscriptUpToTimestamp(chunks, args.timestamp, args.videoDuration);
   },
 });

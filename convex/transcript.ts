@@ -4,13 +4,14 @@ export interface TranscriptSegment {
   text: string;
   offset: number;
   duration: number;
+  requiresVideoEnd?: boolean;
 }
 
 export interface ChunkedTranscript {
   text: string;
   startTime: number;
   endTime: number;
-  segments?: Array<{ text: string; startTime: number; endTime: number }>;
+  segments?: Array<{ text: string; startTime: number; endTime: number; requiresVideoEnd?: boolean }>;
 }
 
 export function extractYouTubeId(url: string): string | null {
@@ -124,6 +125,7 @@ export function chunkTranscript(
           text: s.text,
           startTime: s.offset,
           endTime: s.offset + s.duration,
+          ...(s.requiresVideoEnd ? { requiresVideoEnd: true } : {}),
         })),
       });
       currentChunk = [];
@@ -141,6 +143,7 @@ export function chunkTranscript(
         text: s.text,
         startTime: s.offset,
         endTime: s.offset + s.duration,
+        ...(s.requiresVideoEnd ? { requiresVideoEnd: true } : {}),
       })),
     });
   }
@@ -151,6 +154,7 @@ export function chunkTranscript(
 export function selectTranscriptUpToTimestamp(
   chunks: ChunkedTranscript[],
   timestamp: number,
+  videoDuration?: number,
 ): Array<{ text: string; startTime: number; endTime: number }> {
   return chunks.flatMap((chunk) => {
     if (!chunk.segments) {
@@ -159,7 +163,15 @@ export function selectTranscriptUpToTimestamp(
         : [];
     }
 
-    const heard = chunk.segments.filter((segment) => segment.endTime <= timestamp);
+    const heard = chunk.segments.flatMap((segment) => {
+      if (segment.requiresVideoEnd) {
+        return typeof videoDuration === "number" && Number.isFinite(videoDuration) &&
+          videoDuration > segment.startTime && timestamp >= videoDuration
+          ? [{ ...segment, endTime: videoDuration }]
+          : [];
+      }
+      return segment.endTime <= timestamp ? [segment] : [];
+    });
     if (heard.length === 0) return [];
 
     return [{

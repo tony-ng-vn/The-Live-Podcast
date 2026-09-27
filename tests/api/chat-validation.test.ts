@@ -17,6 +17,7 @@ const {
     users: { ensureUser: "users.ensureUser" },
     chat: {
       startConversation: "chat.startConversation",
+      rollbackFailedQuestion: "chat.rollbackFailedQuestion",
       appendAssistantMessage: "chat.appendAssistantMessage",
       listConversationMessages: "chat.listConversationMessages",
     },
@@ -107,7 +108,10 @@ describe("POST /api/chat validation", () => {
           return "user_doc";
         }
         if (ref === apiRefs.chat.startConversation) {
-          return { conversationId: "conv_1" };
+          return { conversationId: "conv_1", messageId: "question_1" };
+        }
+        if (ref === apiRefs.chat.rollbackFailedQuestion) {
+          return null;
         }
         if (ref === apiRefs.chat.appendAssistantMessage) {
           return "msg_1";
@@ -232,6 +236,23 @@ describe("POST /api/chat validation", () => {
     });
   });
 
+  it("forwards the player duration only to caption selection", async () => {
+    const res = await POST(new Request("http://localhost/api/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        episodeId: "episode_1", podcasterId: "podcaster_1", timestamp: 60,
+        videoDuration: 60, message: "Explain the ending",
+      }),
+    }));
+    expect(res.status).toBe(200);
+    await drainStream(res);
+    expect(queryMock).toHaveBeenCalledWith(apiRefs.transcriptChunks.getChunksUpToTimestamp, {
+      episodeId: "episode_1", timestamp: 60, videoDuration: 60,
+    });
+    const startCall = mutationMock.mock.calls.find(([ref]) => ref === apiRefs.chat.startConversation);
+    expect(startCall?.[1]).not.toHaveProperty("videoDuration");
+  });
+
   it("asks for a saved key before creating a conversation", async () => {
     savedSettingsMock.mockReturnValue({
       keys: {},
@@ -283,8 +304,51 @@ describe("POST /api/chat validation", () => {
 
     expect(res.status).toBe(503);
     await expect(res.json()).resolves.toMatchObject({
-      error: "Oops, someone stole the apple. Please try again while I find another one.",
+      error: "I could not prepare this chat right now. Please try your question again.",
+      code: "CHAT_UNAVAILABLE",
       errorId: expect.any(String),
+    });
+  });
+
+  it("treats an empty model response as a failed answer and removes the pending question", async () => {
+    streamMock.mockImplementation(async function* () {});
+    const res = await POST(new Request("http://localhost/api/chat", {
+      method: "POST", body: JSON.stringify({
+        episodeId: "episode_1", podcasterId: "podcaster_1", timestamp: 30, message: "Explain this",
+      }),
+    }));
+    expect(res.status).toBe(503);
+    await expect(res.json()).resolves.toMatchObject({ code: "MODEL_UNAVAILABLE" });
+    expect(mutationMock).not.toHaveBeenCalledWith(apiRefs.chat.appendAssistantMessage, expect.anything());
+    expect(mutationMock).toHaveBeenCalledWith(apiRefs.chat.rollbackFailedQuestion, {
+      conversationId: "conv_1", messageId: "question_1",
+    });
+  });
+
+  it("explains a model rate limit and points to model settings", async () => {
+    streamMock.mockImplementation(async function* () {
+      throw Object.assign(new Error("OpenRouter API error: 429 Too Many Requests - Provider returned error"), {
+        code: "MODEL_RATE_LIMITED",
+      });
+    });
+
+    const res = await POST(new Request("http://localhost/api/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        episodeId: "episode_1", podcasterId: "podcaster_1", timestamp: 30,
+        message: "Explain this",
+      }),
+    }));
+
+    expect(res.status).toBe(429);
+    await expect(res.json()).resolves.toMatchObject({
+      code: "MODEL_RATE_LIMITED",
+      error: expect.stringContaining("Model settings"),
+      errorId: expect.any(String),
+    });
+    expect(mutationMock).toHaveBeenCalledWith(apiRefs.chat.rollbackFailedQuestion, {
+      conversationId: "conv_1",
+      messageId: "question_1",
     });
   });
 });

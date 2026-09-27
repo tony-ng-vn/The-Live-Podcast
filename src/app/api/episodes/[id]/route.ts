@@ -5,7 +5,7 @@ import {
   api,
 } from "@/lib/convex/client";
 import { asConvexId } from "@/lib/convex/ids";
-import { FRIENDLY_SERVER_ERROR } from "@/lib/api-error";
+import { publicFailure } from "@/lib/api-error";
 import { recordServerError } from "@/lib/server-error";
 
 export async function GET(
@@ -17,7 +17,7 @@ export async function GET(
     clerkAuth = await auth();
   } catch (error) {
     const errorId = await recordServerError("episodes.auth", error);
-    return NextResponse.json({ error: FRIENDLY_SERVER_ERROR, errorId }, { status: 503 });
+    return NextResponse.json({ error: publicFailure("SIGN_IN_UNAVAILABLE").error, code: "SIGN_IN_UNAVAILABLE", errorId }, { status: 503 });
   }
   const { userId, getToken } = clerkAuth;
   if (!userId) {
@@ -51,7 +51,7 @@ export async function GET(
   } catch (error) {
     const errorId = await recordServerError("episodes.detail", error);
     return NextResponse.json(
-      { error: FRIENDLY_SERVER_ERROR, errorId },
+      { error: publicFailure("VIDEO_LOAD_UNAVAILABLE").error, code: "VIDEO_LOAD_UNAVAILABLE", errorId },
       { status: 503 }
     );
   }

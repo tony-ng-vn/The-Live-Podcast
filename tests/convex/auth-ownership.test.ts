@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { listConversationMessages, appendAssistantMessage, startConversation } from "../../convex/chat";
+import { listConversationMessages, appendAssistantMessage, rollbackFailedQuestion, startConversation } from "../../convex/chat";
 import { getExistingEpisodeByYoutubeId, listEpisodes } from "../../convex/episodes";
 
 function handlerOf(value: unknown): (context: unknown, args: unknown) => Promise<unknown> {
@@ -41,6 +41,17 @@ describe("Convex ownership checks", () => {
       db: { get: async () => ({ userId: "user_b" }), insert },
     }, { conversationId: "conversation_b", content: "secret" })).rejects.toThrow("Unauthorized");
     expect(insert).not.toHaveBeenCalled();
+  });
+
+  it("does not remove another user's failed question", async () => {
+    const dbGet = vi.fn(async () => ({ userId: "user_b" }));
+    const dbDelete = vi.fn();
+    await expect(handlerOf(rollbackFailedQuestion)({
+      auth: { getUserIdentity: async () => ({ subject: "user_a" }) },
+      db: { get: dbGet, delete: dbDelete },
+    }, { conversationId: "conversation_b", messageId: "question_b" })).rejects.toThrow("Unauthorized");
+    expect(dbGet).toHaveBeenCalledTimes(1);
+    expect(dbDelete).not.toHaveBeenCalled();
   });
 
   it("rejects a caller who has no verified Clerk token before creating a conversation", async () => {
