@@ -7,6 +7,10 @@
 - People can save encrypted OpenRouter and OpenAI keys, choose their own model, and remove a saved key from Model settings.
 - Video chat uses each person's saved model and key and points them to Model settings when a key is missing.
 
+**Branding**
+
+- The app now uses The Live Podcast in navigation, page titles, video import copy, and package metadata.
+
 ---
 
 ## v0.3.4
