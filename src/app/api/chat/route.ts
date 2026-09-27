@@ -4,7 +4,7 @@ import { createPersonalLLMProvider, getLLMProvider } from "@/lib/llm";
 import type { LLMProvider, Message } from "@/lib/llm/types";
 import { decryptModelKey } from "@/lib/model-credentials";
 import { readSavedModelSettings } from "@/lib/model-settings";
-import { publicFailure, failureFromError } from "@/lib/api-error";
+import { publicFailure, failureFromError, type PublicFailureCode } from "@/lib/api-error";
 import { recordServerError } from "@/lib/server-error";
 import {
   getAuthenticatedConvexClient,
@@ -30,7 +30,12 @@ type ChatStreamEvent =
   | { type: "error"; message: string; code?: string };
 
 export async function POST(request: Request): Promise<Response> {
-  const { userId, getToken } = await auth();
+  let clerkAuth: Awaited<ReturnType<typeof auth>>;
+  try { clerkAuth = await auth(); } catch (error) {
+    const errorId = await recordServerError("chat.auth", error);
+    return NextResponse.json({ error: publicFailure("SIGN_IN_UNAVAILABLE").error, code: "SIGN_IN_UNAVAILABLE", errorId }, { status: 503 });
+  }
+  const { userId, getToken } = clerkAuth;
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -161,6 +166,7 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ error: publicFailure("CHAT_UNAVAILABLE").error, code: "CHAT_UNAVAILABLE", errorId }, { status: 503 });
   }
 
+  let failureCode: PublicFailureCode = "CHAT_UNAVAILABLE";
   let llmMessages: Message[];
   let stream: AsyncGenerator<string, void, unknown>;
   try {
@@ -228,34 +234,12 @@ export async function POST(request: Request): Promise<Response> {
       console.log("[Chat:API] Full LLM message payload:", JSON.stringify(llmMessages, null, 2));
     }
 
+    failureCode = "MODEL_UNAVAILABLE";
     stream = llm.stream(llmMessages, selectedModel ? { model: selectedModel } : undefined);
 
     const first = await stream.next();
     if (first.done) {
-      await convex.mutation(api.chat.appendAssistantMessage, {
-        conversationId: activeConversationId,
-        content: "",
-        timestamp: typedTimestamp,
-      });
-
-      const emptyReadable = new ReadableStream({
-        start(controller) {
-          enqueueSseEvent(controller, {
-            type: "conversation",
-            conversationId: String(activeConversationId),
-          });
-          enqueueSseEvent(controller, { type: "done" });
-          controller.close();
-        },
-      });
-      return new Response(emptyReadable, {
-        status: 200,
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive",
-        },
-      });
+      throw Object.assign(new Error("Model returned no answer content"), { code: "MODEL_UNAVAILABLE" });
     }
 
     const firstToken = first.value;
@@ -283,6 +267,7 @@ export async function POST(request: Request): Promise<Response> {
             console.log("[Chat:API] Full assistant response:", fullContent);
           }
 
+          failureCode = "CHAT_SAVE_UNAVAILABLE";
           await convex.mutation(api.chat.appendAssistantMessage, {
             conversationId: convoId,
             content: fullContent,
@@ -302,7 +287,7 @@ export async function POST(request: Request): Promise<Response> {
               await recordServerError("chat.rollback", rollbackError);
             }
           }
-          const failure = failureFromError(error, "MODEL_UNAVAILABLE");
+          const failure = failureFromError(error, failureCode);
           enqueueSseEvent(controller, { type: "error", message: failure.error, code: failure.code });
         } finally {
           controller.close();
@@ -330,7 +315,7 @@ export async function POST(request: Request): Promise<Response> {
         await recordServerError("chat.rollback", rollbackError);
       }
     }
-    const failure = failureFromError(error, "MODEL_UNAVAILABLE");
+    const failure = failureFromError(error, failureCode);
     return NextResponse.json(
       { error: failure.error, code: failure.code, errorId, conversationId: activeConversationId },
       { status: failure.status },

@@ -1,4 +1,5 @@
 import { LLMProvider, Message, LLMOptions } from "./types";
+import { modelProviderError } from "./provider-error";
 
 export class OpenAIProvider implements LLMProvider {
   private apiKey: string;
@@ -31,7 +32,8 @@ export class OpenAIProvider implements LLMProvider {
     });
 
     if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
+      const data = await response.json().catch(() => ({}));
+      throw modelProviderError("OpenAI", response.status, data.error, this.apiKey, response.statusText);
     }
 
     const data = await response.json();
@@ -58,7 +60,8 @@ export class OpenAIProvider implements LLMProvider {
     });
 
     if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
+      const data = await response.json().catch(() => ({}));
+      throw modelProviderError("OpenAI", response.status, data.error, this.apiKey, response.statusText);
     }
 
     const reader = response.body?.getReader();
@@ -81,13 +84,13 @@ export class OpenAIProvider implements LLMProvider {
         const data = trimmed.slice(6);
         if (data === "[DONE]") return;
 
-        try {
-          const parsed = JSON.parse(data);
-          const content = parsed.choices[0]?.delta?.content;
-          if (content) yield content;
-        } catch {
-          // skip malformed JSON
+        let parsed;
+        try { parsed = JSON.parse(data); } catch { continue; }
+        if (parsed.error) {
+          throw modelProviderError("OpenAI", Number(parsed.error.code) || 503, parsed.error, this.apiKey);
         }
+        const content = parsed.choices?.[0]?.delta?.content;
+        if (content) yield content;
       }
     }
   }
