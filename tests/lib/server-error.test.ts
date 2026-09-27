@@ -17,6 +17,7 @@ const folders: string[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
+  vi.useRealTimers();
   mutationMock.mockReset();
   await Promise.all(folders.splice(0).map((folder) => rm(folder, { recursive: true, force: true })));
 });
@@ -68,5 +69,18 @@ describe("recordServerError", () => {
 
     await expect(recordServerError("episodes.list", new Error("Library failed")))
       .resolves.toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("does not make viewers wait for a stalled error store", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("ERROR_LOG_INGEST_TOKEN", "private-ingest-token");
+    mutationMock.mockReturnValue(new Promise(() => {}));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const pending = recordServerError("chat.response", new Error("Provider failed"));
+    await vi.advanceTimersByTimeAsync(1500);
+
+    await expect(pending).resolves.toMatch(/^[0-9a-f-]{36}$/);
   });
 });
