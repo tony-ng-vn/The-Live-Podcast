@@ -77,6 +77,7 @@ export default defineSchema({
     conversationId: v.id("conversations"),
     role: v.string(),
     content: v.string(),
+    timestampInEpisode: v.optional(v.number()),
     createdAt: v.number(),
   }).index("by_conversation", ["conversationId"]),
 
