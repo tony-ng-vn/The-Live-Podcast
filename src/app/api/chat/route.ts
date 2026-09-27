@@ -209,6 +209,7 @@ export async function POST(request: Request): Promise<Response> {
 
     const priorMessages = await convex.query(api.chat.listConversationMessages, {
       conversationId: activeConversationId,
+      timestamp: typedTimestamp,
     });
 
     llmMessages = [
@@ -228,6 +229,7 @@ export async function POST(request: Request): Promise<Response> {
       await convex.mutation(api.chat.appendAssistantMessage, {
         conversationId: activeConversationId,
         content: "",
+        timestamp: typedTimestamp,
       });
 
       const emptyReadable = new ReadableStream({
@@ -278,6 +280,7 @@ export async function POST(request: Request): Promise<Response> {
           await convex.mutation(api.chat.appendAssistantMessage, {
             conversationId: convoId,
             content: fullContent,
+            timestamp: typedTimestamp,
           });
 
           enqueueSseEvent(controller, { type: "done" });
