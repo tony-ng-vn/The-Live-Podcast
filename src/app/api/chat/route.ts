@@ -102,14 +102,14 @@ export async function POST(request: Request): Promise<Response> {
       const { provider, model } = settings.selection;
       const savedKey = settings.keys[provider];
       if (!savedKey) {
-        return NextResponse.json({ error: "Add an API key in Model settings before chatting." }, { status: 400 });
+        return NextResponse.json({ error: "Add an API key in Model settings before chatting.", code: "MODEL_KEY_REQUIRED" }, { status: 400 });
       }
       llm = createPersonalLLMProvider(provider, decryptModelKey(savedKey, userId, provider));
       selectedModel = model;
     } else if (process.env.VERCEL === "1" ||
         (process.env.LLM_PROVIDER === "openrouter" && !process.env.OPENROUTER_API_KEY) ||
         (process.env.LLM_PROVIDER === "openai" && !process.env.OPENAI_API_KEY)) {
-      return NextResponse.json({ error: "Add an API key in Model settings before chatting." }, { status: 400 });
+      return NextResponse.json({ error: "Add an API key in Model settings before chatting.", code: "MODEL_KEY_REQUIRED" }, { status: 400 });
     } else {
       llm = getLLMProvider();
     }
