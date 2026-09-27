@@ -4,7 +4,7 @@ import { createPersonalLLMProvider, getLLMProvider } from "@/lib/llm";
 import type { LLMProvider, Message } from "@/lib/llm/types";
 import { decryptModelKey } from "@/lib/model-credentials";
 import { readSavedModelSettings } from "@/lib/model-settings";
-import { FRIENDLY_SERVER_ERROR } from "@/lib/api-error";
+import { publicFailure, failureFromError } from "@/lib/api-error";
 import { recordServerError } from "@/lib/server-error";
 import {
   getAuthenticatedConvexClient,
@@ -28,13 +28,6 @@ type ChatStreamEvent =
   | { type: "token"; content: string }
   | { type: "done" }
   | { type: "error"; message: string; code?: string };
-
-const MODEL_RATE_LIMIT_ERROR =
-  "That model is busy or has reached its request limit. Try again later or choose another model in Model settings.";
-
-function isModelRateLimited(error: unknown): boolean {
-  return error instanceof Error && "code" in error && error.code === "MODEL_RATE_LIMITED";
-}
 
 export async function POST(request: Request): Promise<Response> {
   const { userId, getToken } = await auth();
@@ -124,7 +117,7 @@ export async function POST(request: Request): Promise<Response> {
     }
   } catch (error) {
     const errorId = await recordServerError("chat.model-settings", error);
-    return NextResponse.json({ error: FRIENDLY_SERVER_ERROR, errorId }, { status: 503 });
+    return NextResponse.json({ error: publicFailure("MODEL_SETTINGS_UNAVAILABLE").error, code: "MODEL_SETTINGS_UNAVAILABLE", errorId }, { status: 503 });
   }
 
   let convex;
@@ -140,7 +133,7 @@ export async function POST(request: Request): Promise<Response> {
       .catch(() => undefined);
   } catch (error) {
     const errorId = await recordServerError("chat.setup", error);
-    return NextResponse.json({ error: FRIENDLY_SERVER_ERROR, errorId }, { status: 503 });
+    return NextResponse.json({ error: publicFailure("CHAT_UNAVAILABLE").error, code: "CHAT_UNAVAILABLE", errorId }, { status: 503 });
   }
 
   const typedEpisodeId = asConvexId<"episodes">(episodeId);
@@ -165,7 +158,7 @@ export async function POST(request: Request): Promise<Response> {
     activeMessageId = start.messageId;
   } catch (error) {
     const errorId = await recordServerError("chat.conversation", error);
-    return NextResponse.json({ error: FRIENDLY_SERVER_ERROR, errorId }, { status: 503 });
+    return NextResponse.json({ error: publicFailure("CHAT_UNAVAILABLE").error, code: "CHAT_UNAVAILABLE", errorId }, { status: 503 });
   }
 
   let llmMessages: Message[];
@@ -309,9 +302,8 @@ export async function POST(request: Request): Promise<Response> {
               await recordServerError("chat.rollback", rollbackError);
             }
           }
-          enqueueSseEvent(controller, isModelRateLimited(error)
-            ? { type: "error", message: MODEL_RATE_LIMIT_ERROR, code: "MODEL_RATE_LIMITED" }
-            : { type: "error", message: FRIENDLY_SERVER_ERROR });
+          const failure = failureFromError(error, "MODEL_UNAVAILABLE");
+          enqueueSseEvent(controller, { type: "error", message: failure.error, code: failure.code });
         } finally {
           controller.close();
         }
@@ -338,15 +330,10 @@ export async function POST(request: Request): Promise<Response> {
         await recordServerError("chat.rollback", rollbackError);
       }
     }
-    if (isModelRateLimited(error)) {
-      return NextResponse.json(
-        { error: MODEL_RATE_LIMIT_ERROR, code: "MODEL_RATE_LIMITED", errorId, conversationId: activeConversationId },
-        { status: 429 },
-      );
-    }
+    const failure = failureFromError(error, "MODEL_UNAVAILABLE");
     return NextResponse.json(
-      { error: FRIENDLY_SERVER_ERROR, errorId, conversationId: activeConversationId },
-      { status: 503 }
+      { error: failure.error, code: failure.code, errorId, conversationId: activeConversationId },
+      { status: failure.status },
     );
   }
 }

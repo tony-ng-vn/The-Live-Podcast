@@ -8,7 +8,7 @@ describe("global error page", () => {
       <GlobalError error={new Error("Convex deployment disabled")} reset={vi.fn()} />,
     );
 
-    expect(markup).toContain("Oops, someone stole the apple.");
+    expect(markup).toContain("That request did not finish.");
     expect(markup).toContain("Try again");
     expect(markup).not.toContain("Convex deployment disabled");
   });

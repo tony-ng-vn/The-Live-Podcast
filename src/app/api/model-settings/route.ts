@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { auth, clerkClient } from "@clerk/nextjs/server";
-import { FRIENDLY_SERVER_ERROR } from "@/lib/api-error";
+import { publicFailure } from "@/lib/api-error";
 import { recordServerError } from "@/lib/server-error";
 import { encryptModelKey } from "@/lib/model-credentials";
 import { getSavedModelSettings, isModelProvider, publicModelSettings } from "@/lib/model-settings";
 
 function failure(error: unknown) {
   return recordServerError("model-settings", error).then((errorId) =>
-    NextResponse.json({ error: FRIENDLY_SERVER_ERROR, errorId }, { status: 503 }));
+    NextResponse.json({ error: publicFailure("MODEL_SETTINGS_UNAVAILABLE").error, code: "MODEL_SETTINGS_UNAVAILABLE", errorId }, { status: 503 }));
 }
 
 export async function GET() {
