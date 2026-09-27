@@ -6,6 +6,7 @@ import {
   mutation,
   query,
 } from "./_generated/server";
+import { requireClerkUser, requireRecordOwner } from "./auth";
 
 interface TimedConversationMessage {
   role: string;
@@ -39,6 +40,7 @@ export const startConversation = mutation({
     conversationId: v.optional(v.id("conversations")),
   },
   handler: async (ctx, args) => {
+    const userId = await requireClerkUser(ctx.auth, args.userId);
     const trimmedMessage = args.message.trim();
     if (!trimmedMessage) {
       throw new ConvexError("Message cannot be empty or whitespace-only");
@@ -48,6 +50,7 @@ export const startConversation = mutation({
     if (!episode) {
       throw new ConvexError("Episode not found");
     }
+    requireRecordOwner(episode.userId, userId);
 
     const podcaster = await ctx.db.get(args.podcasterId);
     if (!podcaster) {
@@ -103,6 +106,12 @@ export const listConversationMessages = query({
     timestamp: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const userId = await requireClerkUser(ctx.auth);
+    const conversation = await ctx.db.get(args.conversationId);
+    if (!conversation) {
+      throw new ConvexError("Conversation not found");
+    }
+    requireRecordOwner(conversation.userId, userId);
     const messages = await ctx.db
       .query("conversationMessages")
       .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
@@ -119,10 +128,12 @@ export const appendAssistantMessage = mutation({
     timestamp: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const userId = await requireClerkUser(ctx.auth);
     const conversation = await ctx.db.get(args.conversationId);
     if (!conversation) {
       throw new ConvexError("Conversation not found");
     }
+    requireRecordOwner(conversation.userId, userId);
 
     return ctx.db.insert("conversationMessages", {
       conversationId: args.conversationId,
@@ -141,6 +152,7 @@ export const endConversation = action({
     podcasterId: v.id("podcasters"),
   },
   handler: async (ctx, args) => {
+    await requireClerkUser(ctx.auth, args.userId);
     const conversation = await ctx.runQuery(internal.chat.getConversationById, {
       conversationId: args.conversationId,
     });

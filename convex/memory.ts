@@ -3,6 +3,7 @@ import { embed, embedBatch } from "./embeddings";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { action, internalAction, internalMutation, internalQuery } from "./_generated/server";
+import { requireClerkUser } from "./auth";
 
 interface RecentChunk {
   id: Id<"transcriptChunks">;
@@ -44,6 +45,14 @@ export const getConversationContext = action({
     userMessage: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireClerkUser(ctx.auth, args.userId);
+    const episode = await ctx.runQuery(internal.episodes.getEpisodeDetailInternal, {
+      episodeId: args.episodeId,
+      userId: args.userId,
+    });
+    if (!episode || episode.podcasterId !== args.podcasterId) {
+      throw new Error("Unauthorized");
+    }
     const baseContext = (await ctx.runQuery(internal.memory.getBaseContextData, {
       episodeId: args.episodeId,
       podcasterId: args.podcasterId,
@@ -85,7 +94,7 @@ export const getConversationContext = action({
   },
 });
 
-export const reindexEpisodeChunks = action({
+export const reindexEpisodeChunks = internalAction({
   args: {
     episodeId: v.id("episodes"),
   },

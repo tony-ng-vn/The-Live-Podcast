@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation } from "./_generated/server";
+import { requireClerkUser } from "./auth";
 
 export const ensureUser = mutation({
   args: {
@@ -9,6 +10,7 @@ export const ensureUser = mutation({
     imageUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireClerkUser(ctx.auth, args.clerkUserId);
     const now = Date.now();
     const existing = await ctx.db
       .query("users")

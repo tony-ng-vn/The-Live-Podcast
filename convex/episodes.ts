@@ -7,14 +7,17 @@ import {
   query,
 } from "./_generated/server";
 import { chunkTranscript, extractYouTubeId } from "./transcript";
+import { requireClerkUser, requireRecordOwner } from "./auth";
 
 export const getEpisodeById = query({
   args: {
     episodeId: v.id("episodes"),
   },
   handler: async (ctx, args) => {
+    const userId = await requireClerkUser(ctx.auth);
     const episode = await ctx.db.get(args.episodeId);
     if (!episode) return null;
+    requireRecordOwner(episode.userId, userId);
     return {
       title: episode.title,
       youtubeId: episode.youtubeId,
@@ -27,6 +30,7 @@ export const listEpisodes = query({
     userId: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireClerkUser(ctx.auth, args.userId);
     const episodes = await ctx.db
       .query("episodes")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
@@ -110,6 +114,7 @@ export const getEpisodeDetail: ReturnType<typeof query> = query({
     userId: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireClerkUser(ctx.auth, args.userId);
     return ctx.runQuery(internal.episodes.getEpisodeDetailInternal, args);
   },
 });
@@ -131,6 +136,7 @@ export const ingestEpisode: ReturnType<typeof action> = action({
     segments: v.array(segmentValidator),
   },
   handler: async (ctx, args) => {
+    await requireClerkUser(ctx.auth, args.userId);
     const trimmedUrl = args.url.trim();
     const youtubeId = extractYouTubeId(trimmedUrl);
 

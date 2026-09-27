@@ -9,6 +9,7 @@ import {
   internalQuery,
   query,
 } from "./_generated/server";
+import { requireClerkUser } from "./auth";
 
 interface EpisodeProfileSource {
   title: string;
@@ -23,8 +24,16 @@ interface ConversationMessagePayload {
 export const getPodcasterById = query({
   args: {
     podcasterId: v.id("podcasters"),
+    userId: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireClerkUser(ctx.auth, args.userId);
+    const ownedEpisode = await ctx.db
+      .query("episodes")
+      .withIndex("by_podcaster", (q) => q.eq("podcasterId", args.podcasterId))
+      .filter((q) => q.eq(q.field("userId"), args.userId))
+      .first();
+    if (!ownedEpisode) return null;
     const podcaster = await ctx.db.get(args.podcasterId);
     if (!podcaster) {
       return null;
@@ -40,9 +49,30 @@ export const getPodcasterById = query({
 export const rebuildPodcasterProfile: ReturnType<typeof action> = action({
   args: {
     podcasterId: v.id("podcasters"),
+    userId: v.string(),
   },
   handler: async (ctx, args) => {
-    return ctx.runAction(internal.profiles.rebuildPodcasterProfileInternal, args);
+    await requireClerkUser(ctx.auth, args.userId);
+    const hasAccess = await ctx.runQuery(internal.profiles.hasOwnedPodcasterEpisode, args);
+    if (!hasAccess) throw new Error("Unauthorized");
+    return ctx.runAction(internal.profiles.rebuildPodcasterProfileInternal, {
+      podcasterId: args.podcasterId,
+    });
+  },
+});
+
+export const hasOwnedPodcasterEpisode = internalQuery({
+  args: {
+    podcasterId: v.id("podcasters"),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const episode = await ctx.db
+      .query("episodes")
+      .withIndex("by_podcaster", (q) => q.eq("podcasterId", args.podcasterId))
+      .filter((q) => q.eq(q.field("userId"), args.userId))
+      .first();
+    return episode !== null;
   },
 });
 
