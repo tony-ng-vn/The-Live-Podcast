@@ -1,3 +1,13 @@
+## v0.5.0
+
+2026-09-27
+
+**Memory**
+
+- You can review a private preview of your saved production chats and import one chosen chat into Fuzzy Brain as source evidence, with its video pause points and a verified receipt.
+
+---
+
 ## v0.4.5
 
 2026-09-27
