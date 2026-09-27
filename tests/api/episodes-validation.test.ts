@@ -49,6 +49,7 @@ const {
     users: { ensureUser: "users.ensureUser" },
     episodes: {
       ingestEpisode: "episodes.ingestEpisode",
+      getExistingEpisodeByYoutubeId: "episodes.getExistingEpisodeByYoutubeId",
       listEpisodes: "episodes.listEpisodes",
       getEpisodeDetail: "episodes.getEpisodeDetail",
     },
@@ -92,7 +93,9 @@ describe("POST /api/episodes validation", () => {
 
     mutationMock.mockResolvedValue("user_doc");
     actionMock.mockResolvedValue({ episodeId: "episode_1" });
-    queryMock.mockResolvedValue([]);
+    queryMock.mockImplementation(async (ref: string) =>
+      ref === apiRefs.episodes.getExistingEpisodeByYoutubeId ? null : [],
+    );
 
     getConvexClientMock.mockReturnValue({
       mutation: mutationMock,
@@ -170,6 +173,30 @@ describe("POST /api/episodes validation", () => {
     const res = await POST(req);
     expect(res.status).toBe(409);
     await expect(res.json()).resolves.toEqual({ error: "This episode is already in your Library." });
+  });
+
+  it("recognizes a saved video before spending a transcript request", async () => {
+    queryMock.mockImplementation(async (ref: string) =>
+      ref === apiRefs.episodes.getExistingEpisodeByYoutubeId
+        ? { id: "episode_1" }
+        : [],
+    );
+    const fetchMock = vi.mocked(fetch);
+
+    const res = await POST(new Request("http://localhost/api/episodes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: VALID_URL }),
+    }));
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({ error: "This episode is already in your Library." });
+    expect(queryMock).toHaveBeenCalledWith(apiRefs.episodes.getExistingEpisodeByYoutubeId, {
+      userId: "server_user",
+      youtubeId: "dQw4w9WgXcQ",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(actionMock).not.toHaveBeenCalled();
   });
 
   it("uses a canonical watch URL for oEmbed metadata when given a raw video id", async () => {
