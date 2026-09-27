@@ -4,10 +4,10 @@ import { readApiError } from "../../src/lib/api-error";
 describe("readApiError", () => {
   it("uses the API's specific JSON error", async () => {
     const response = Response.json(
-      { error: "Transcript service is unreachable" },
+      { error: "This video does not have captions I can read yet." },
       { status: 422 },
     );
-    expect(await readApiError(response)).toBe("Transcript service is unreachable");
+    expect(await readApiError(response)).toBe("This video does not have captions I can read yet.");
   });
 
   it("explains an HTML server failure without showing HTML", async () => {

@@ -129,8 +129,8 @@ export default function AddEpisodeModal({ open, onClose }: AddEpisodeModalProps)
       } catch (err) {
         const isAbortError = err instanceof Error && err.name === "AbortError";
         const msg = isAbortError
-          ? "Request timed out after 60 seconds. Please check backend services and try again."
-          : "Network error. Please check your connection and try again.";
+          ? "That took too long. Please try adding the video again."
+          : "I could not reach the app. Please check your connection and try again.";
         setError(msg);
         toast.error(msg);
       } finally {
