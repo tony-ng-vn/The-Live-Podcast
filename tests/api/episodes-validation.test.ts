@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const VALID_URL = "https://youtube.com/watch?v=dQw4w9WgXcQ";
 const VALID_SEGMENTS = [{ text: "hello world", start: 0, duration: 3 }];
@@ -78,6 +78,8 @@ import { GET, POST } from "@/app/api/episodes/route";
 import { GET as getEpisodeDetail } from "@/app/api/episodes/[id]/route";
 
 describe("POST /api/episodes validation", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
   beforeEach(() => {
     authMock.mockResolvedValue({ userId: "server_user" });
     currentUserMock.mockResolvedValue(null);
@@ -218,6 +220,30 @@ describe("POST /api/episodes validation", () => {
         podcasterName: "Raw ID Host",
       }),
     );
+  });
+
+  it("sends the shared token only to the transcript service", async () => {
+    vi.stubEnv("TRANSCRIPT_SERVICE_TOKEN", "test-secret");
+    const req = new Request("http://localhost/api/episodes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: VALID_URL }),
+    });
+
+    const res = await POST(req);
+
+    expect(res.status).toBe(201);
+    const fetchMock = vi.mocked(fetch);
+    const transcriptCall = fetchMock.mock.calls.find(([input]) =>
+      String(input).includes("/transcript/"),
+    );
+    expect(transcriptCall?.[1]).toMatchObject({
+      headers: { "X-Transcript-Token": "test-secret" },
+    });
+    const metadataCall = fetchMock.mock.calls.find(([input]) =>
+      String(input).includes("/oembed"),
+    );
+    expect(metadataCall?.[1]?.headers).not.toHaveProperty("X-Transcript-Token");
   });
 
   it("returns 400 for non-YouTube URLs", async () => {
