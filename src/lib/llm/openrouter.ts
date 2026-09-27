@@ -1,5 +1,15 @@
 import { LLMProvider, Message, LLMOptions } from "./types";
 
+function openRouterResponseError(response: Response, errorData: { error?: { message?: string } }): Error {
+  const message = `OpenRouter API error: ${response.status} ${response.statusText}${errorData.error?.message ? ` - ${errorData.error.message}` : ""}`;
+  console.error(`[LLM:OpenRouter] ${message}`);
+  const error = new Error(message);
+  if (response.status === 429) {
+    return Object.assign(error, { code: "MODEL_RATE_LIMITED" as const });
+  }
+  return error;
+}
+
 export class OpenRouterProvider implements LLMProvider {
   private apiKey: string;
   private baseUrl: string;
@@ -47,9 +57,7 @@ export class OpenRouterProvider implements LLMProvider {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      const errorMsg = `OpenRouter API error: ${response.status} ${response.statusText}${errorData.error?.message ? ` - ${errorData.error.message}` : ""}`;
-      console.error(`[LLM:OpenRouter] ${errorMsg}`);
-      throw new Error(errorMsg);
+      throw openRouterResponseError(response, errorData);
     }
 
     const data = await response.json();
@@ -94,9 +102,7 @@ export class OpenRouterProvider implements LLMProvider {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      const errorMsg = `OpenRouter API error: ${response.status} ${response.statusText}${errorData.error?.message ? ` - ${errorData.error.message}` : ""}`;
-      console.error(`[LLM:OpenRouter] ${errorMsg}`);
-      throw new Error(errorMsg);
+      throw openRouterResponseError(response, errorData);
     }
 
     const reader = response.body?.getReader();
