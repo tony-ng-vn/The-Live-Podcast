@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -42,10 +42,11 @@ function ensureTranscriptRuntime() {
   }
 }
 
-function startService(name, command, args, cwd = root) {
+function startService(name, command, args, cwd = root, env = {}) {
   console.log(`Starting ${name}...`);
   const child = spawn(command, args, {
     cwd,
+    env: { ...process.env, ...env },
     stdio: "inherit",
     detached: process.platform !== "win32",
   });
@@ -102,10 +103,12 @@ async function main() {
     run(process.execPath, [path.join(root, "scripts/check-local-setup.mjs")]);
     ensureTranscriptRuntime();
     const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+    const serviceToken = process.env.TRANSCRIPT_SERVICE_TOKEN || randomBytes(32).toString("hex");
+    const transcriptEnv = { TRANSCRIPT_SERVICE_TOKEN: serviceToken };
     const services = [
       startService("Convex", npm, ["run", "convex:dev"]),
-      startService("Transcript", venvPython, ["-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8765", "--reload"], serviceDir),
-      startService("Next.js", npm, ["run", "dev"]),
+      startService("Transcript", venvPython, ["-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8765", "--reload"], serviceDir, transcriptEnv),
+      startService("Next.js", npm, ["run", "dev"], root, transcriptEnv),
     ];
     process.exitCode = await superviseServices(services);
   } catch (error) {

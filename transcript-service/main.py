@@ -5,7 +5,10 @@ Start: uvicorn main:app --host 127.0.0.1 --port 8765 --reload
 Or:    npm run transcript:dev
 """
 
-from fastapi import FastAPI, HTTPException
+import hmac
+import os
+
+from fastapi import Depends, FastAPI, Header, HTTPException
 from youtube_transcript_api import (
     YouTubeTranscriptApi,
     TranscriptsDisabled,
@@ -23,12 +26,20 @@ PREFERRED_LANGUAGES = ["en", "en-US", "en-GB", "en-CA", "en-AU"]
 _api = YouTubeTranscriptApi()
 
 
+def require_service_token(token: str | None = Header(default=None, alias="X-Transcript-Token")) -> None:
+    expected = os.environ.get("TRANSCRIPT_SERVICE_TOKEN")
+    if not expected:
+        raise HTTPException(status_code=503, detail="Transcript service token is not configured")
+    if not token or not hmac.compare_digest(token, expected):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok"}
 
 
-@app.get("/transcript/{video_id}")
+@app.get("/transcript/{video_id}", dependencies=[Depends(require_service_token)])
 async def get_transcript(video_id: str) -> dict:
     """
     Returns transcript segments for the given YouTube video ID.

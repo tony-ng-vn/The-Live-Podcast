@@ -67,11 +67,13 @@ async function fetchTranscriptSegments(
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 30_000);
+  const serviceToken = process.env.TRANSCRIPT_SERVICE_TOKEN;
 
   let response: Response;
   try {
     response = await fetch(`${serviceUrl}/transcript/${videoId}`, {
       signal: controller.signal,
+      headers: serviceToken ? { "X-Transcript-Token": serviceToken } : undefined,
     });
   } catch (err) {
     clearTimeout(timeoutId);
