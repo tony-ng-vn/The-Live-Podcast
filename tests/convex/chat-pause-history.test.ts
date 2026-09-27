@@ -20,4 +20,10 @@ describe("chat pause history", () => {
       { role: "user", content: "At 30 seconds", timestampInEpisode: 30 },
     ], 30)).toEqual([{ role: "user", content: "At 30 seconds" }]);
   });
+
+  it("accepts calls from the current web deployment during rollout", () => {
+    expect(selectConversationMessagesUpToTimestamp([
+      { role: "user", content: "Existing message" },
+    ], undefined)).toEqual([{ role: "user", content: "Existing message" }]);
+  });
 });
