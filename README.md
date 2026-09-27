@@ -115,6 +115,13 @@ Users can replace or remove their saved key on the same page.
 Production chat requires each user to set a key and model before asking questions.
 Local development can still use a configured server provider from `.env`.
 
+### Keep your chats in Fuzzy Brain
+
+Run `npm run sync:fuzzy-brain -- prepare` to review saved production chats, then import one chosen chat with the command it prints.
+The import saves source evidence and a verified receipt in Fuzzy Brain.
+It does not make the chat an approved memory.
+See [the sync guide](docs/fuzzy-brain-sync.md) for private setup, exclusions, and revision handling.
+
 ## Testing
 
 ```bash
