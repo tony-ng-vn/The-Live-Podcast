@@ -1,6 +1,6 @@
 ---
 name: backend-worker
-description: Implements API routes, database operations, server-side logic, and backend infrastructure for TonyPodcast.
+description: Implements API routes, database operations, server-side logic, and backend infrastructure for The Live Podcast.
 ---
 
 # Backend Worker

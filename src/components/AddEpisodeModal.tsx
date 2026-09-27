@@ -148,7 +148,7 @@ export default function AddEpisodeModal({ open, onClose }: AddEpisodeModalProps)
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       role="dialog"
       aria-modal="true"
-      aria-label="Add a podcast episode"
+      aria-label="Add a YouTube video"
       onClick={(e) => {
         if (e.target === e.currentTarget && !loading) onClose();
       }}
@@ -184,7 +184,7 @@ export default function AddEpisodeModal({ open, onClose }: AddEpisodeModalProps)
 
         <form onSubmit={handleSubmit}>
           <label htmlFor="episode-url" className="sr-only">
-            YouTube podcast URL
+            YouTube video URL
           </label>
           <input
             ref={inputRef}
@@ -195,7 +195,7 @@ export default function AddEpisodeModal({ open, onClose }: AddEpisodeModalProps)
               setUrl(e.target.value);
               if (error) setError("");
             }}
-            placeholder="Paste a YouTube podcast URL..."
+            placeholder="Paste a YouTube video URL..."
             disabled={loading}
             className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-3 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500/20 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:border-zinc-400 dark:focus:ring-zinc-400/20"
           />

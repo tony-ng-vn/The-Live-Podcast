@@ -8,11 +8,13 @@ import {
   type KeyboardEvent,
 } from "react";
 import { toast } from "sonner";
+import Link from "next/link";
 
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   error?: boolean;
+  modelSettingsNeeded?: boolean;
 }
 
 type ChatStreamEvent =
@@ -92,6 +94,7 @@ export default function ChatPanel({
         if (!res.ok || !res.body) {
           const payload = (await res.json().catch(() => null)) as {
             error?: string;
+            code?: string;
           } | null;
           const errorMessage =
             payload?.error ?? "Failed to get a response. Please try again.";
@@ -104,6 +107,7 @@ export default function ChatPanel({
               content:
                 updated[assistantIndex].content || errorMessage,
               error: true,
+              modelSettingsNeeded: payload?.code === "MODEL_KEY_REQUIRED",
             };
             return updated;
           });
@@ -267,7 +271,7 @@ export default function ChatPanel({
       <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-3">
         {messages.length === 0 && (
           <p className="text-center text-sm text-zinc-400 dark:text-zinc-500">
-            Ask a question about this episode…
+            Ask a question about this episode...
           </p>
         )}
         {messages.map((msg, i) => (
@@ -308,6 +312,11 @@ export default function ChatPanel({
                   >
                     Retry
                   </button>
+                  {msg.modelSettingsNeeded && (
+                    <Link href="/settings/models" className="text-xs font-medium underline">
+                      Open Model settings
+                    </Link>
+                  )}
                 </div>
               )}
             </div>
@@ -329,7 +338,7 @@ export default function ChatPanel({
             onFocus={() => onUserInteraction?.()}
             onKeyDown={handleKeyDown}
             disabled={streaming}
-            placeholder="Type a message…"
+            placeholder="Type a message..."
             rows={1}
             className="flex-1 resize-none rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 transition-colors focus:border-zinc-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:placeholder-zinc-500 dark:focus:border-zinc-500 dark:focus-visible:outline-zinc-50"
           />

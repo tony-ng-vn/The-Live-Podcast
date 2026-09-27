@@ -1,5 +1,5 @@
 """
-Transcript microservice — wraps youtube-transcript-api for the tony-podcast app.
+Transcript service for The Live Podcast. Uses youtube-transcript-api.
 
 Start: uvicorn main:app --host 127.0.0.1 --port 8765 --reload
 Or:    npm run transcript:dev

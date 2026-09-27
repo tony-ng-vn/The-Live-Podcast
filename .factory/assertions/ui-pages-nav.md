@@ -1,11 +1,11 @@
-# TonyPodcast UI / Pages / Navigation — Behavioral Assertions
+# The Live Podcast UI / Pages / Navigation - Behavioral Assertions
 
 ---
 
 ## Landing Page (/)
 
 ### VAL-UI-001: Landing page renders hero section
-The landing page at `/` renders a visible hero section containing the TonyPodcast branding/logo, a headline, and a sub-headline or tagline describing the product.
+The landing page at `/` renders a visible hero section containing The Live Podcast branding/logo, a headline, and a sub-headline or tagline describing the product.
 **Pass condition:** Hero section is visible on page load with branding, headline text, and tagline.
 **Evidence:** DOM contains a hero container with heading elements and brand imagery.
 
@@ -21,16 +21,16 @@ Clicking the "Add a podcast" CTA on the landing page opens the AddEpisodeModal d
 
 ### VAL-UI-004: Landing page is accessible and has correct metadata
 The landing page has a descriptive `<title>`, proper heading hierarchy (single h1), and all images have alt text.
-**Pass condition:** Document title is set to a TonyPodcast-specific string; exactly one `<h1>` exists; no images lack `alt`.
+**Pass condition:** Document title is set to a title specific to The Live Podcast; exactly one `<h1>` exists; no images lack `alt`.
 **Evidence:** Inspect `document.title`, query `h1` count, and audit `img[alt]`.
 
-### VAL-UI-005: Landing page responsive layout — mobile
-On viewports ≤ 640px, the landing page stacks content vertically, hero text and CTA remain fully visible without horizontal scrolling.
+### VAL-UI-005: Landing page responsive layout  -  mobile
+On viewports <= 640px, the landing page stacks content vertically, hero text and CTA remain fully visible without horizontal scrolling.
 **Pass condition:** No horizontal overflow; CTA button is fully visible and tappable at 375px width.
-**Evidence:** Set viewport to 375×812; verify `document.documentElement.scrollWidth <= window.innerWidth`; CTA is in viewport.
+**Evidence:** Set viewport to 375x812; verify `document.documentElement.scrollWidth <= window.innerWidth`; CTA is in viewport.
 
-### VAL-UI-006: Landing page responsive layout — desktop
-On viewports ≥ 1024px, the landing page renders hero content centered or in a visually balanced layout appropriate for wide screens.
+### VAL-UI-006: Landing page responsive layout  -  desktop
+On viewports >= 1024px, the landing page renders hero content centered or in a visually balanced layout appropriate for wide screens.
 **Pass condition:** Hero content does not stretch full-width edge-to-edge; max-width constraint is applied.
 **Evidence:** Inspect computed styles on hero container; confirm `max-width` or centered layout.
 
@@ -105,7 +105,7 @@ When a valid YouTube URL (e.g., `https://www.youtube.com/watch?v=...`) is pasted
 ### VAL-UI-025: Submitting shows loading state
 After submitting a valid URL, the modal displays a loading indicator (spinner, skeleton, or disabled button with loading text).
 **Pass condition:** A loading state is visible between submission and resolution (success or error).
-**Evidence:** Submit button shows spinner or text changes to "Adding…" / "Loading…"; or a separate loading indicator appears.
+**Evidence:** Submit button shows spinner or text changes to "Adding..." / "Loading..."; or a separate loading indicator appears.
 
 ### VAL-UI-026: Successful submission shows success feedback
 After the episode is successfully added, the modal shows a success message or automatically closes and the new episode appears in the library.
@@ -161,18 +161,18 @@ Clicking anywhere on an EpisodeCard navigates to `/watch/[id]` for that episode.
 **Pass condition:** After click, the URL is `/watch/<episode-id>` and the watch page renders.
 **Evidence:** `window.location.pathname` matches the expected watch URL.
 
-### VAL-UI-046: Library page grid is responsive — mobile
-On viewports ≤ 640px, episode cards stack in a single column.
+### VAL-UI-046: Library page grid is responsive  -  mobile
+On viewports <= 640px, episode cards stack in a single column.
 **Pass condition:** Cards are laid out in a single column; no horizontal scrolling required.
 **Evidence:** At 375px viewport width, all cards have the same `x` offset; `scrollWidth <= clientWidth`.
 
-### VAL-UI-047: Library page grid is responsive — tablet
+### VAL-UI-047: Library page grid is responsive  -  tablet
 On viewports between 641px and 1023px, episode cards display in a 2-column grid.
 **Pass condition:** Cards are arranged in 2 columns per row.
 **Evidence:** At 768px viewport, adjacent cards have different `x` positions; grid has 2 columns.
 
-### VAL-UI-048: Library page grid is responsive — desktop
-On viewports ≥ 1024px, episode cards display in a 3+ column grid.
+### VAL-UI-048: Library page grid is responsive  -  desktop
+On viewports >= 1024px, episode cards display in a 3+ column grid.
 **Pass condition:** Cards are arranged in 3 or more columns.
 **Evidence:** At 1280px viewport, the grid renders 3+ cards per row.
 
@@ -195,17 +195,17 @@ The YouTube player plays the video when the user clicks the play button (either 
 **Pass condition:** After clicking play, the player state changes to "playing" (YT.PlayerState.PLAYING = 1).
 **Evidence:** YouTube IFrame API `getPlayerState()` returns 1 after play action.
 
-### VAL-UI-062: YouTube player controls work — pause
+### VAL-UI-062: YouTube player controls work  -  pause
 The user can pause the video using standard YouTube controls or a custom pause button.
 **Pass condition:** Video transitions from playing to paused state.
 **Evidence:** `getPlayerState()` returns 2 (paused) after pause action.
 
-### VAL-UI-063: YouTube player controls work — seek
+### VAL-UI-063: YouTube player controls work  -  seek
 The user can seek to a different position in the video using the progress bar.
-**Pass condition:** After seeking, `getCurrentTime()` reflects the new position (±2 seconds tolerance).
+**Pass condition:** After seeking, `getCurrentTime()` reflects the new position (+/-2 seconds tolerance).
 **Evidence:** Compare `getCurrentTime()` before and after seek; values differ.
 
-### VAL-UI-064: YouTube player controls work — volume
+### VAL-UI-064: YouTube player controls work  -  volume
 The user can adjust volume through the YouTube player volume control.
 **Pass condition:** Volume change is reflected in `getVolume()` or mute state in `isMuted()`.
 **Evidence:** YouTube API volume methods reflect the change.
@@ -215,20 +215,20 @@ The watch page includes a chat panel alongside or below the YouTube player.
 **Pass condition:** A chat panel container is present in the DOM with identifiable chat UI elements (message list area, input field).
 **Evidence:** A container with chat-related test IDs or class names is visible; contains a message display area and text input.
 
-### VAL-UI-066: Watch page layout — desktop side-by-side
-On desktop viewports (≥ 1024px), the YouTube player and chat panel are arranged side by side (player on the left, chat on the right).
+### VAL-UI-066: Watch page layout  -  desktop side-by-side
+On desktop viewports (>= 1024px), the YouTube player and chat panel are arranged side by side (player on the left, chat on the right).
 **Pass condition:** Player and chat panel are horizontally adjacent; player occupies the larger portion.
 **Evidence:** At 1280px viewport, player and chat have different `x` positions; both are visible without scrolling.
 
-### VAL-UI-067: Watch page layout — mobile stacked
-On mobile viewports (≤ 640px), the YouTube player and chat panel stack vertically (player on top, chat below).
+### VAL-UI-067: Watch page layout  -  mobile stacked
+On mobile viewports (<= 640px), the YouTube player and chat panel stack vertically (player on top, chat below).
 **Pass condition:** Player and chat are vertically stacked; player is above chat.
 **Evidence:** At 375px viewport, player `y` < chat `y`; both elements span full width.
 
-### VAL-UI-068: Watch page layout — player maintains aspect ratio
+### VAL-UI-068: Watch page layout  -  player maintains aspect ratio
 The YouTube player maintains a 16:9 aspect ratio across all viewport sizes.
-**Pass condition:** Player container's width-to-height ratio is approximately 16:9 (±5% tolerance).
-**Evidence:** `clientWidth / clientHeight` of the player container ≈ 1.78.
+**Pass condition:** Player container's width-to-height ratio is approximately 16:9 (+/-5% tolerance).
+**Evidence:** `clientWidth / clientHeight` of the player container ~= 1.78.
 
 ---
 
@@ -255,7 +255,7 @@ If the chat panel is already active/open, the Jump In button is either hidden, d
 **Evidence:** Button has `disabled` attribute, or is not present in the DOM, or is replaced by Resume button.
 
 ### VAL-UI-084: Jump In button pauses then opens chat atomically
-The pause and chat-open actions from Jump In happen as a single user-perceived action — no intermediate state where video is paused but chat isn't open.
+The pause and chat-open actions from Jump In happen as a single user-perceived action  -  no intermediate state where video is paused but chat isn't open.
 **Pass condition:** Within the same render cycle or event handler, both pause and chat activation occur.
 **Evidence:** After clicking Jump In, both conditions (video paused AND chat active) are true on the next frame.
 
@@ -275,7 +275,7 @@ Clicking the "Resume" button closes or deactivates the chat panel.
 
 ### VAL-UI-092: Resume button resumes video playback
 Clicking the "Resume" button resumes the YouTube video from where it was paused.
-**Pass condition:** `getPlayerState()` returns 1 (playing) after clicking Resume; `getCurrentTime()` is ≥ the time when Jump In was clicked.
+**Pass condition:** `getPlayerState()` returns 1 (playing) after clicking Resume; `getCurrentTime()` is >= the time when Jump In was clicked.
 **Evidence:** Player state is PLAYING; current time is at or near the pause point.
 
 ### VAL-UI-093: Resume button closes chat and resumes video atomically
@@ -309,13 +309,13 @@ The chat panel contains a send/submit button for the text input.
 
 ### VAL-UI-103: Chat panel auto-scrolls to latest message
 When a new message appears in the chat, the message list scrolls to show the latest message.
-**Pass condition:** After a new message is added, `scrollTop + clientHeight ≈ scrollHeight` for the message container.
+**Pass condition:** After a new message is added, `scrollTop + clientHeight ~= scrollHeight` for the message container.
 **Evidence:** Message list container's scroll position is at the bottom after new message render.
 
 ### VAL-UI-104: Chat panel is responsive on mobile
 On mobile viewports, the chat panel occupies full width and has an appropriate height that doesn't obscure the video player entirely.
-**Pass condition:** At 375px viewport, chat panel width ≈ viewport width; player remains partially visible or is scrollable to.
-**Evidence:** Chat panel `clientWidth` ≈ 375px; page is scrollable to reveal player.
+**Pass condition:** At 375px viewport, chat panel width ~= viewport width; player remains partially visible or is scrollable to.
+**Evidence:** Chat panel `clientWidth` ~= 375px; page is scrollable to reveal player.
 
 ---
 
@@ -327,17 +327,17 @@ At 375px viewport width, none of the three pages (/, /library, /watch/[id]) prod
 **Evidence:** Check scroll width vs viewport width on each page.
 
 ### VAL-UI-111: Touch targets meet minimum size on mobile
-All interactive elements (buttons, links, cards) have a minimum tap target of 44×44px on mobile.
+All interactive elements (buttons, links, cards) have a minimum tap target of 44x44px on mobile.
 **Pass condition:** All clickable elements have `clientWidth >= 44` and `clientHeight >= 44` (or equivalent padding).
 **Evidence:** Audit all interactive elements for minimum dimensions.
 
 ### VAL-UI-112: Text remains readable without zooming on mobile
 Body text is at least 16px (or 1rem) on mobile viewports to prevent auto-zoom on iOS and ensure readability.
-**Pass condition:** Computed `font-size` of body text elements is ≥ 16px at 375px viewport.
-**Evidence:** `getComputedStyle` on paragraph/body text elements returns font-size ≥ 16px.
+**Pass condition:** Computed `font-size` of body text elements is >= 16px at 375px viewport.
+**Evidence:** `getComputedStyle` on paragraph/body text elements returns font-size >= 16px.
 
 ### VAL-UI-113: Navigation is accessible on mobile
-Navigation links/menu are accessible on mobile — either always visible or behind a hamburger menu that is reachable.
+Navigation links/menu are accessible on mobile  -  either always visible or behind a hamburger menu that is reachable.
 **Pass condition:** Nav links are visible or a toggle button reveals them; all page destinations are reachable.
 **Evidence:** Nav element or hamburger toggle is in viewport; all links are functional.
 

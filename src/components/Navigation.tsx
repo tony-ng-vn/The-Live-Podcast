@@ -19,7 +19,7 @@ export default function Navigation() {
           href="/"
           className="text-lg font-bold tracking-tight text-zinc-900 dark:text-zinc-50"
         >
-          TonyPodcast
+          The Live Podcast
         </Link>
 
         {/* Desktop nav */}
@@ -30,6 +30,12 @@ export default function Navigation() {
           >
             Library
           </Link>
+
+          {isSignedIn && (
+            <Link href="/settings/models" className="text-sm font-medium text-zinc-600 hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50 dark:focus-visible:outline-zinc-50">
+              Model settings
+            </Link>
+          )}
 
           {isSignedIn && (
             <div className="flex items-center gap-4">
@@ -104,6 +110,13 @@ export default function Navigation() {
           >
             Library
           </Link>
+
+          {isSignedIn && (
+            <Link href="/settings/models" onClick={() => setMenuOpen(false)}
+              className="block rounded-md px-3 py-2 text-sm font-medium text-zinc-600 hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50 dark:focus-visible:outline-zinc-50">
+              Model settings
+            </Link>
+          )}
 
           {isSignedIn && (
             <div className="flex items-center justify-between px-3 py-2">

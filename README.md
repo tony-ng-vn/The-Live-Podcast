@@ -86,6 +86,16 @@ If you run the transcript service on a different host or port, update
 For cloud hosting, set `TRANSCRIPT_PROVIDER=serpapi` and add `SERPAPI_API_KEY` as a server-side secret.
 See [the transcript provider decision](docs/transcript-provider-decision.md) for the reason and the plan to return to one source.
 
+### Choose a chat model
+
+Signed-in users can open Model settings, save an OpenRouter or OpenAI API key, and enter a model ID.
+The app encrypts each key with `MODEL_CREDENTIALS_KEY` before saving it in Clerk private metadata.
+Only the server can read the saved value, and the settings API never returns a key to the browser.
+Keep the encryption key stable, because changing it makes saved user keys unreadable.
+Users can replace or remove their saved key on the same page.
+Production chat requires each user to set a key and model before asking questions.
+Local development can still use a configured server provider from `.env`.
+
 ## Testing
 
 ```bash

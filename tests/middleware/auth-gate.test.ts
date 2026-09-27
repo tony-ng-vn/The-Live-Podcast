@@ -80,4 +80,14 @@ describe("middleware auth gate", () => {
 
     expect(auth.protect).toHaveBeenCalledOnce();
   });
+
+  it("protects the model settings page and API", async () => {
+    const pageAuth = makeAuth(null);
+    await runMiddleware(pageAuth, request("GET", "/settings/models"));
+    expect(pageAuth.protect).toHaveBeenCalledOnce();
+
+    const apiAuth = makeAuth(null);
+    const response = await runMiddleware(apiAuth, request("PUT", "/api/model-settings"));
+    expect(response.status).toBe(401);
+  });
 });

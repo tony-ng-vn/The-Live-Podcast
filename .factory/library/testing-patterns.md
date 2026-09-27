@@ -1,6 +1,6 @@
 # Testing Patterns
 
-Discovered patterns and conventions for writing tests in the TonyPodcast project.
+Discovered patterns and conventions for writing tests in The Live Podcast project.
 
 **What belongs here:** Test setup patterns, database handling, known quirks with test infrastructure.
 **What does NOT belong here:** Test results or CI configuration.
@@ -11,10 +11,10 @@ Discovered patterns and conventions for writing tests in the TonyPodcast project
 
 Each test file creates its own SQLite database to avoid lock conflicts when Vitest runs test files in parallel. Follow this naming convention:
 
-- `tests/smoke.test.ts` → `prisma/test.db`
-- `tests/api/episodes.test.ts` → `prisma/test.db`
-- `tests/api/chat.test.ts` → `prisma/test-chat.db`
-- `tests/api/profiles.test.ts` → `prisma/test-profiles.db`
+- `tests/smoke.test.ts` -> `prisma/test.db`
+- `tests/api/episodes.test.ts` -> `prisma/test.db`
+- `tests/api/chat.test.ts` -> `prisma/test-chat.db`
+- `tests/api/profiles.test.ts` -> `prisma/test-profiles.db`
 
 **Pattern:**
 ```typescript

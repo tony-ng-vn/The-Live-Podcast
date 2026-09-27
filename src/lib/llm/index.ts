@@ -22,6 +22,10 @@ export function createLLMProvider(type?: ProviderType): LLMProvider {
   }
 }
 
+export function createPersonalLLMProvider(type: "openai" | "openrouter", apiKey: string): LLMProvider {
+  return type === "openai" ? new OpenAIProvider(apiKey) : new OpenRouterProvider({ apiKey });
+}
+
 const _providers: Partial<Record<ProviderType, LLMProvider>> = {};
 
 /**

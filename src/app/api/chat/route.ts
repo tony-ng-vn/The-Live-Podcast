@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { getLLMProvider } from "@/lib/llm";
-import type { Message } from "@/lib/llm/types";
+import { createPersonalLLMProvider, getLLMProvider } from "@/lib/llm";
+import type { LLMProvider, Message } from "@/lib/llm/types";
+import { decryptModelKey } from "@/lib/model-credentials";
+import { readSavedModelSettings } from "@/lib/model-settings";
+import { FRIENDLY_SERVER_ERROR } from "@/lib/api-error";
+import { recordServerError } from "@/lib/server-error";
 import {
   getConvexClient,
   api,
-  isConvexConfigurationError,
 } from "@/lib/convex/client";
 import { asConvexId } from "@/lib/convex/ids";
 import { buildMvpSystemPrompt } from "@/lib/chat/system-prompt";
@@ -88,10 +91,35 @@ export async function POST(request: Request): Promise<Response> {
   const typedTimestamp = timestamp;
   const typedMessage = message;
 
+  let llm: LLMProvider;
+  let selectedModel: string | undefined;
+  let clerkUser: Awaited<ReturnType<typeof currentUser>>;
+  try {
+    clerkUser = await currentUser();
+    const settings = readSavedModelSettings(clerkUser?.privateMetadata);
+    if (settings.selection) {
+      const { provider, model } = settings.selection;
+      const savedKey = settings.keys[provider];
+      if (!savedKey) {
+        return NextResponse.json({ error: "Add an API key in Model settings before chatting.", code: "MODEL_KEY_REQUIRED" }, { status: 400 });
+      }
+      llm = createPersonalLLMProvider(provider, decryptModelKey(savedKey, userId, provider));
+      selectedModel = model;
+    } else if (process.env.VERCEL === "1" ||
+        (process.env.LLM_PROVIDER === "openrouter" && !process.env.OPENROUTER_API_KEY) ||
+        (process.env.LLM_PROVIDER === "openai" && !process.env.OPENAI_API_KEY)) {
+      return NextResponse.json({ error: "Add an API key in Model settings before chatting.", code: "MODEL_KEY_REQUIRED" }, { status: 400 });
+    } else {
+      llm = getLLMProvider();
+    }
+  } catch (error) {
+    const errorId = await recordServerError("chat.model-settings", error);
+    return NextResponse.json({ error: FRIENDLY_SERVER_ERROR, errorId }, { status: 503 });
+  }
+
   let convex;
   try {
     convex = getConvexClient();
-    const clerkUser = await currentUser();
     await convex
       .mutation(api.users.ensureUser, {
         clerkUserId: userId,
@@ -101,13 +129,8 @@ export async function POST(request: Request): Promise<Response> {
       })
       .catch(() => undefined);
   } catch (error) {
-    if (isConvexConfigurationError(error)) {
-      return NextResponse.json({ error: error.message }, { status: 503 });
-    }
-
-    const message =
-      error instanceof Error ? error.message : "Conversation setup failed";
-    return NextResponse.json({ error: message }, { status: 503 });
+    const errorId = await recordServerError("chat.setup", error);
+    return NextResponse.json({ error: FRIENDLY_SERVER_ERROR, errorId }, { status: 503 });
   }
 
   const typedEpisodeId = asConvexId<"episodes">(episodeId);
@@ -129,10 +152,8 @@ export async function POST(request: Request): Promise<Response> {
     });
     activeConversationId = start.conversationId;
   } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Conversation setup failed";
-    const status = errorMessage.includes("not found") ? 400 : 403;
-    return NextResponse.json({ error: errorMessage }, { status });
+    const errorId = await recordServerError("chat.conversation", error);
+    return NextResponse.json({ error: FRIENDLY_SERVER_ERROR, errorId }, { status: 503 });
   }
 
   let llmMessages: Message[];
@@ -200,8 +221,7 @@ export async function POST(request: Request): Promise<Response> {
       console.log("[Chat:API] Full LLM message payload:", JSON.stringify(llmMessages, null, 2));
     }
 
-    const llm = getLLMProvider();
-    stream = llm.stream(llmMessages);
+    stream = llm.stream(llmMessages, selectedModel ? { model: selectedModel } : undefined);
 
     const first = await stream.next();
     if (first.done) {
@@ -262,11 +282,8 @@ export async function POST(request: Request): Promise<Response> {
 
           enqueueSseEvent(controller, { type: "done" });
         } catch (error) {
-          const message =
-            error instanceof Error
-              ? error.message
-              : "Streaming failed before the response could be saved.";
-          enqueueSseEvent(controller, { type: "error", message });
+          await recordServerError("chat.stream", error);
+          enqueueSseEvent(controller, { type: "error", message: FRIENDLY_SERVER_ERROR });
         } finally {
           controller.close();
         }
@@ -282,10 +299,9 @@ export async function POST(request: Request): Promise<Response> {
       },
     });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "AI service is currently unavailable.";
+    const errorId = await recordServerError("chat.response", error);
     return NextResponse.json(
-      { error: message },
+      { error: FRIENDLY_SERVER_ERROR, errorId },
       { status: 503 }
     );
   }
