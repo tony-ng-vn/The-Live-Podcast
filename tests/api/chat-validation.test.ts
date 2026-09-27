@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   authMock,
@@ -83,7 +83,10 @@ async function drainStream(response: Response): Promise<void> {
 }
 
 describe("POST /api/chat validation", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
   beforeEach(() => {
+    vi.stubEnv("LLM_PROVIDER", "ollama");
     authMock.mockResolvedValue({ userId: "server_user" });
     currentUserMock.mockResolvedValue({
       emailAddresses: [{ emailAddress: "user@example.com" }],
@@ -225,6 +228,22 @@ describe("POST /api/chat validation", () => {
 
     expect(res.status).toBe(400);
     expect((await res.json() as { error: string }).error).toContain("API key");
+    expect(mutationMock).not.toHaveBeenCalledWith(apiRefs.chat.startConversation, expect.anything());
+  });
+
+  it("asks for model settings when the local provider has no key", async () => {
+    vi.stubEnv("LLM_PROVIDER", "openrouter");
+    vi.stubEnv("OPENROUTER_API_KEY", "");
+    const res = await POST(new Request("http://localhost/api/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        episodeId: "episode_1", podcasterId: "podcaster_1", timestamp: 30,
+        message: "Explain this",
+      }),
+    }));
+
+    expect(res.status).toBe(400);
+    expect((await res.json() as { error: string }).error).toContain("Model settings");
     expect(mutationMock).not.toHaveBeenCalledWith(apiRefs.chat.startConversation, expect.anything());
   });
 });
