@@ -27,6 +27,7 @@ interface ChatPanelProps {
   episodeId: string;
   podcasterId: string;
   currentTimestamp: number;
+  videoDuration?: number;
   onConversationIdChange?: (conversationId: string | null) => void;
   onUserInteraction?: () => void;
 }
@@ -35,6 +36,7 @@ export default function ChatPanel({
   episodeId,
   podcasterId,
   currentTimestamp,
+  videoDuration,
   onConversationIdChange,
   onUserInteraction,
 }: ChatPanelProps) {
@@ -86,6 +88,7 @@ export default function ChatPanel({
             episodeId,
             podcasterId,
             timestamp: currentTimestamp,
+            videoDuration,
             message: userMessage,
             conversationId,
           }),
@@ -215,7 +218,7 @@ export default function ChatPanel({
         setStreaming(false);
       }
     },
-    [episodeId, podcasterId, currentTimestamp, conversationId, onConversationIdChange],
+    [episodeId, podcasterId, currentTimestamp, videoDuration, conversationId, onConversationIdChange],
   );
 
   const sendMessage = useCallback(async () => {

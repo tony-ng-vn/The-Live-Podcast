@@ -236,6 +236,23 @@ describe("POST /api/chat validation", () => {
     });
   });
 
+  it("forwards the player duration only to caption selection", async () => {
+    const res = await POST(new Request("http://localhost/api/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        episodeId: "episode_1", podcasterId: "podcaster_1", timestamp: 60,
+        videoDuration: 60, message: "Explain the ending",
+      }),
+    }));
+    expect(res.status).toBe(200);
+    await drainStream(res);
+    expect(queryMock).toHaveBeenCalledWith(apiRefs.transcriptChunks.getChunksUpToTimestamp, {
+      episodeId: "episode_1", timestamp: 60, videoDuration: 60,
+    });
+    const startCall = mutationMock.mock.calls.find(([ref]) => ref === apiRefs.chat.startConversation);
+    expect(startCall?.[1]).not.toHaveProperty("videoDuration");
+  });
+
   it("asks for a saved key before creating a conversation", async () => {
     savedSettingsMock.mockReturnValue({
       keys: {},

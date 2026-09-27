@@ -20,6 +20,7 @@ export interface YouTubePlayerHandle {
   play: () => void;
   pause: () => void;
   getCurrentTime: () => number;
+  getDuration: () => number;
 }
 
 interface YouTubePlayerProps {
@@ -99,6 +100,7 @@ const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>(
           }
           return 0;
         },
+        getDuration: () => ready && playerRef.current ? playerRef.current.getDuration() : 0,
       }),
       [ready]
     );

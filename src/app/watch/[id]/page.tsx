@@ -33,6 +33,7 @@ export default function WatchPage() {
   const [voiceMode, setVoiceMode] = useState(false);
   const [micError, setMicError] = useState(false);
   const [chatTimestamp, setChatTimestamp] = useState(0);
+  const [videoDuration, setVideoDuration] = useState<number | undefined>();
   const [, setConversationId] = useState<string | null>(null);
   const playerRef = useRef<YouTubePlayerHandle>(null);
   const jumpInGuardRef = useRef(false);
@@ -78,6 +79,8 @@ export default function WatchPage() {
     if (playerRef.current) {
       playerRef.current.pause();
       setChatTimestamp(playerRef.current.getCurrentTime());
+      const duration = playerRef.current.getDuration();
+      setVideoDuration(Number.isFinite(duration) && duration > 0 ? duration : undefined);
     }
 
     // Check if voice is supported (Chrome-like browsers)
@@ -279,6 +282,7 @@ export default function WatchPage() {
                     episodeId={episode.id}
                     podcasterId={episode.podcaster.id}
                     currentTimestamp={chatTimestamp}
+                    videoDuration={videoDuration}
                     onMicError={handleMicError}
                     onConversationIdChange={setConversationId}
                     onUserInteraction={pauseVideoForInteraction}
@@ -290,6 +294,7 @@ export default function WatchPage() {
                     episodeId={episode.id}
                     podcasterId={episode.podcaster.id}
                     currentTimestamp={chatTimestamp}
+                    videoDuration={videoDuration}
                     onConversationIdChange={setConversationId}
                     onUserInteraction={pauseVideoForInteraction}
                   />

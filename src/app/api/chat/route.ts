@@ -18,6 +18,7 @@ interface ChatRequestBody {
   episodeId?: string;
   podcasterId?: string;
   timestamp?: number;
+  videoDuration?: number;
   message?: string;
   conversationId?: string;
 }
@@ -58,7 +59,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const { episodeId, podcasterId, timestamp, message, conversationId } = body;
+  const { episodeId, podcasterId, timestamp, videoDuration, message, conversationId } = body;
   const normalizedConversationId =
     typeof conversationId === "string" && conversationId.trim() !== ""
       ? conversationId
@@ -87,7 +88,9 @@ export async function POST(request: Request): Promise<Response> {
   if (
     typeof episodeId !== "string" ||
     typeof podcasterId !== "string" ||
-    typeof timestamp !== "number"
+    typeof timestamp !== "number" || !Number.isFinite(timestamp) || timestamp < 0 ||
+    (videoDuration !== undefined &&
+      (typeof videoDuration !== "number" || !Number.isFinite(videoDuration) || videoDuration <= 0))
   ) {
     return NextResponse.json(
       { error: "Invalid request body" },
@@ -174,6 +177,7 @@ export async function POST(request: Request): Promise<Response> {
     const chunks = await convex.query(api.transcriptChunks.getChunksUpToTimestamp, {
       episodeId: typedEpisodeId,
       timestamp: typedTimestamp,
+      ...(videoDuration === undefined ? {} : { videoDuration }),
     });
 
     console.log(`[Chat:API] Found ${chunks.length} transcript chunks up to ${typedTimestamp}s`);

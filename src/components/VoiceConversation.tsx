@@ -16,6 +16,7 @@ interface VoiceConversationProps {
   episodeId: string;
   podcasterId: string;
   currentTimestamp: number;
+  videoDuration?: number;
   onMicError?: () => void;
   onConversationIdChange?: (conversationId: string | null) => void;
   onUserInteraction?: () => void;
@@ -25,6 +26,7 @@ export default function VoiceConversation({
   episodeId,
   podcasterId,
   currentTimestamp,
+  videoDuration,
   onMicError,
   onConversationIdChange,
   onUserInteraction,
@@ -49,6 +51,7 @@ export default function VoiceConversation({
           episodeId,
           podcasterId,
           timestamp: currentTimestamp,
+          videoDuration,
           message,
           conversationId,
         }),
@@ -104,7 +107,7 @@ export default function VoiceConversation({
 
       return fullResponse;
     },
-    [episodeId, podcasterId, currentTimestamp, conversationId, onConversationIdChange],
+    [episodeId, podcasterId, currentTimestamp, videoDuration, conversationId, onConversationIdChange],
   );
 
   // Start listening via speech recognition
