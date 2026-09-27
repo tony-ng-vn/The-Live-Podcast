@@ -3,9 +3,24 @@ import { auth } from "@clerk/nextjs/server";
 import {
   getConvexClient,
   api,
-  isConvexConfigurationError,
 } from "@/lib/convex/client";
 import { extractYouTubeId } from "@/lib/youtube";
+import { FRIENDLY_SERVER_ERROR } from "@/lib/api-error";
+import { recordServerError } from "@/lib/server-error";
+
+class TranscriptServiceError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
+async function serviceFailure(source: string, error: unknown): Promise<Response> {
+  const errorId = await recordServerError(source, error);
+  return NextResponse.json(
+    { error: FRIENDLY_SERVER_ERROR, errorId },
+    { status: 503 },
+  );
+}
 
 interface TranscriptSegment {
   text: string;
@@ -61,10 +76,11 @@ async function fetchTranscriptSegments(
   } catch (err) {
     clearTimeout(timeoutId);
     const isTimeout = err instanceof Error && err.name === "AbortError";
-    throw new Error(
+    throw new TranscriptServiceError(
       isTimeout
         ? `Transcript service timed out for video ${videoId}`
         : `Transcript service is unreachable at ${serviceUrl}. Start it with: npm run transcript:dev`,
+      503,
     );
   }
   clearTimeout(timeoutId);
@@ -75,12 +91,15 @@ async function fetchTranscriptSegments(
       const body = (await response.json()) as { detail?: string };
       if (body.detail) detail = body.detail;
     } catch { /* ignore */ }
-    throw new Error(`Transcript service error for video ${videoId}: ${detail}`);
+    throw new TranscriptServiceError(
+      `Transcript service error for video ${videoId}: ${detail}`,
+      response.status === 404 ? 422 : 503,
+    );
   }
 
   const data = (await response.json()) as TranscriptServiceResponse;
   if (!data.segments || data.segments.length === 0) {
-    throw new Error(`No transcript segments returned for video (${videoId})`);
+    throw new TranscriptServiceError(`No transcript segments returned for video (${videoId})`, 422);
   }
 
   return data.segments.map((s) => ({
@@ -117,11 +136,16 @@ interface PostRequestBody {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const { userId } = await withTimeout(
-    auth(),
-    5_000,
-    "Timed out while checking authentication",
-  );
+  let userId: string | null;
+  try {
+    ({ userId } = await withTimeout(
+      auth(),
+      5_000,
+      "Timed out while checking authentication",
+    ));
+  } catch (error) {
+    return serviceFailure("episodes.auth", error);
+  }
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -163,11 +187,14 @@ export async function POST(request: Request): Promise<Response> {
   try {
     segments = await fetchTranscriptSegments(videoId);
   } catch (transcriptError) {
-    const message =
-      transcriptError instanceof Error
-        ? transcriptError.message
-        : "Failed to fetch transcript";
-    return NextResponse.json({ error: message }, { status: 422 });
+    const errorId = await recordServerError("episodes.transcript", transcriptError);
+    if (transcriptError instanceof TranscriptServiceError && transcriptError.status === 422) {
+      return NextResponse.json(
+        { error: "This video does not have captions I can read yet.", errorId },
+        { status: 422 },
+      );
+    }
+    return NextResponse.json({ error: FRIENDLY_SERVER_ERROR, errorId }, { status: 503 });
   }
 
   try {
@@ -181,7 +208,7 @@ export async function POST(request: Request): Promise<Response> {
       }),
       10_000,
       "Timed out while ensuring user profile",
-    ).catch(() => undefined);
+    );
 
     const episode = await withTimeout(
       convex.action(api.episodes.ingestEpisode, {
@@ -200,33 +227,38 @@ export async function POST(request: Request): Promise<Response> {
     );
     return NextResponse.json(episode, { status: 201 });
   } catch (error) {
-    if (isConvexConfigurationError(error)) {
-      return NextResponse.json({ error: error.message }, { status: 503 });
-    }
-
     const message =
       error instanceof Error ? error.message : "Failed to ingest episode";
 
     if (message.includes("already been ingested")) {
-      return NextResponse.json({ error: message }, { status: 409 });
+      return NextResponse.json({ error: "This episode is already in your Library." }, { status: 409 });
     }
     if (message.includes("Invalid YouTube URL")) {
-      return NextResponse.json({ error: message }, { status: 400 });
+      return NextResponse.json({ error: "Please enter a valid YouTube URL." }, { status: 400 });
     }
     if (
       message.includes("No transcript") ||
       message.includes("Transcript") ||
       message.includes("captions")
     ) {
-      return NextResponse.json({ error: message }, { status: 422 });
+      const errorId = await recordServerError("episodes.ingest", error);
+      return NextResponse.json(
+        { error: "This video does not have captions I can read yet.", errorId },
+        { status: 422 },
+      );
     }
 
-    return NextResponse.json({ error: message }, { status: 503 });
+    return serviceFailure("episodes.ingest", error);
   }
 }
 
 export async function GET(): Promise<Response> {
-  const { userId } = await auth();
+  let userId: string | null;
+  try {
+    ({ userId } = await auth());
+  } catch (error) {
+    return serviceFailure("episodes.auth", error);
+  }
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -237,12 +269,6 @@ export async function GET(): Promise<Response> {
 
     return NextResponse.json(episodes, { status: 200 });
   } catch (error) {
-    if (isConvexConfigurationError(error)) {
-      return NextResponse.json({ error: error.message }, { status: 503 });
-    }
-
-    const message =
-      error instanceof Error ? error.message : "Failed to load episodes";
-    return NextResponse.json({ error: message }, { status: 503 });
+    return serviceFailure("episodes.list", error);
   }
 }

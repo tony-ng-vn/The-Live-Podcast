@@ -56,3 +56,6 @@ next-env.d.ts
 
 # vector store
 .vectorstore/
+
+# local server diagnostics
+/logs/

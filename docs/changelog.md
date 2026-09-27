@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.2.1
+2026-09-27
+
+**Startup**
+- Local startup now names invalid Clerk and Convex settings before opening a broken app.
+
+**Episodes**
+- Adding a video now gives a clear message for missing captions and a friendly retry message for service failures.
+
+**Library**
+- A failed library load now shows a retry button instead of an empty library.
+- Unexpected page failures now show a friendly retry page.
+
+**Diagnostics**
+- Server failures now write structured records to a private local file and to runtime logs so an agent can inspect the cause without showing it to viewers.
+
+---
+
 ## [0.2.0] - 2026-04-12
 
 ### Changed
