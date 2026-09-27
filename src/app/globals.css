@@ -32,5 +32,8 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /* Font family comes from the --font-sans theme token (Geist), set by
+     layout.tsx. A hardcoded stack here silently overrode it, so Geist was
+     downloaded on every page load and never used. */
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
 }

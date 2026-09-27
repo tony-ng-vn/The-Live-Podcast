@@ -17,9 +17,11 @@ interface EpisodeCardProps {
 }
 
 export default function EpisodeCard({ episode }: EpisodeCardProps) {
+  // Prefer YouTube's higher-resolution still over the 320x180 mqdefault when
+  // oEmbed metadata was unavailable at ingest time.
   const thumbnail =
     episode.thumbnailUrl ??
-    `https://img.youtube.com/vi/${episode.youtubeId}/mqdefault.jpg`;
+    `https://img.youtube.com/vi/${episode.youtubeId}/hqdefault.jpg`;
 
   return (
     <Link
@@ -34,7 +36,6 @@ export default function EpisodeCard({ episode }: EpisodeCardProps) {
           className="object-cover transition-transform duration-200 group-hover:scale-105"
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
           loading="lazy"
-          unoptimized
         />
       </div>
       <div className="p-4">

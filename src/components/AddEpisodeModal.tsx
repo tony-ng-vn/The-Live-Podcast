@@ -3,21 +3,20 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { extractYouTubeId } from "@/lib/youtube";
 
 interface AddEpisodeModalProps {
   open: boolean;
   onClose: () => void;
 }
 
-function isYouTubeUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    const hostname = parsed.hostname.replace("www.", "");
-    return hostname === "youtube.com" || hostname === "youtu.be";
-  } catch {
-    return false;
-  }
-}
+/**
+ * Server-side worst case is 30s for the transcript plus 45s for ingest, so the
+ * client budget is deliberately longer. When it was 60s the client always
+ * aborted first, showing a false timeout while the server went on to create the
+ * episode.
+ */
+const CLIENT_TIMEOUT_MS = 90_000;
 
 export default function AddEpisodeModal({ open, onClose }: AddEpisodeModalProps) {
   const router = useRouter();
@@ -37,6 +36,16 @@ export default function AddEpisodeModal({ open, onClose }: AddEpisodeModalProps)
       const timer = setTimeout(() => inputRef.current?.focus(), 0);
       return () => clearTimeout(timer);
     }
+  }, [open]);
+
+  // Prevent the page behind the dialog from scrolling.
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
   }, [open]);
 
   // Escape to close
@@ -93,15 +102,17 @@ export default function AddEpisodeModal({ open, onClose }: AddEpisodeModalProps)
         setError("Please enter a URL.");
         return;
       }
-      if (!isYouTubeUrl(trimmed)) {
-        setError("Please enter a valid YouTube URL (youtube.com or youtu.be).");
+      if (!extractYouTubeId(trimmed)) {
+        setError(
+          "That does not look like a YouTube video link. Supported: youtube.com/watch, youtu.be, youtube.com/embed, youtube.com/shorts, or a raw video ID.",
+        );
         return;
       }
 
       setLoading(true);
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 60_000);
+        const timeoutId = setTimeout(() => controller.abort(), CLIENT_TIMEOUT_MS);
         const res = await fetch("/api/episodes", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -114,9 +125,14 @@ export default function AddEpisodeModal({ open, onClose }: AddEpisodeModalProps)
           onClose();
           router.push("/library");
         } else if (res.status === 409) {
-          const msg = "This episode is already in your Library.";
-          toast.message(msg, {
-            description: "Check Library to continue.",
+          // Already ingested: not an error state, but not a new addition either.
+          // Route to the library instead of silently reporting success.
+          const payload = (await res.json().catch(() => null)) as {
+            error?: string;
+          } | null;
+          toast.message("Already in your Library", {
+            description:
+              payload?.error ?? "This episode was added previously.",
           });
           onClose();
           router.push("/library");
@@ -129,7 +145,7 @@ export default function AddEpisodeModal({ open, onClose }: AddEpisodeModalProps)
       } catch (err) {
         const isAbortError = err instanceof Error && err.name === "AbortError";
         const msg = isAbortError
-          ? "Request timed out after 60 seconds. Please check backend services and try again."
+          ? `Request timed out after ${CLIENT_TIMEOUT_MS / 1000} seconds. This can happen with long episodes — check your Library before retrying.`
           : "Network error. Please check your connection and try again.";
         setError(msg);
         toast.error(msg);

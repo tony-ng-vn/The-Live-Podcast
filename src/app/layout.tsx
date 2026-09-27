@@ -15,9 +15,30 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+
 export const metadata: Metadata = {
-  title: "TonyPodcast",
-  description: "Interactive AI Podcast Companion",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: "The Live Podcast",
+    template: "%s · The Live Podcast",
+  },
+  description:
+    "Pause any YouTube podcast at the interesting moment and ask about it. The AI has watched it with you.",
+  openGraph: {
+    type: "website",
+    siteName: "The Live Podcast",
+    title: "The Live Podcast",
+    description:
+      "Pause any YouTube podcast at the interesting moment and ask about it.",
+    url: siteUrl,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "The Live Podcast",
+    description:
+      "Pause any YouTube podcast at the interesting moment and ask about it.",
+  },
 };
 
 export default function RootLayout({

@@ -3,29 +3,19 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
 } from "react";
-import { toast } from "sonner";
-
-interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
-  error?: boolean;
-}
-
-type ChatStreamEvent =
-  | { type: "conversation"; conversationId: string }
-  | { type: "token"; content: string }
-  | { type: "done" }
-  | { type: "error"; message: string };
+import { useChatStream, type ChatTurn } from "@/hooks/use-chat-stream";
 
 interface ChatPanelProps {
   episodeId: string;
   podcasterId: string;
   currentTimestamp: number;
-  onConversationIdChange?: (conversationId: string | null) => void;
+  /** Shared history so switching to voice mode keeps the conversation. */
+  chat: ReturnType<typeof useChatStream>;
   onUserInteraction?: () => void;
 }
 
@@ -33,31 +23,27 @@ export default function ChatPanel({
   episodeId,
   podcasterId,
   currentTimestamp,
-  onConversationIdChange,
+  chat,
   onUserInteraction,
 }: ChatPanelProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const { messages, streaming, send, retry } = chat;
   const [input, setInput] = useState("");
-  const [streaming, setStreaming] = useState(false);
-  const [conversationId, setConversationId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const userScrolledUpRef = useRef(false);
 
-  // Auto-focus on mount
   useEffect(() => {
     textareaRef.current?.focus();
   }, []);
 
-  // Detect if user scrolled up to pause auto-scroll
+  // Pause auto-scroll when the viewer scrolls up to read earlier turns.
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
 
     const handleScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = container;
-      // If user is within 60px of bottom, consider them "following"
       userScrolledUpRef.current = scrollHeight - scrollTop - clientHeight > 60;
     };
 
@@ -65,212 +51,62 @@ export default function ChatPanel({
     return () => container.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Auto-scroll on new messages (only if user hasn't scrolled up)
   useEffect(() => {
     if (!userScrolledUpRef.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
 
-  const streamResponse = useCallback(
-    async (userMessage: string, assistantIndex: number) => {
-      setStreaming(true);
-
-      try {
-        const res = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            episodeId,
-            podcasterId,
-            timestamp: currentTimestamp,
-            message: userMessage,
-            conversationId,
-          }),
-        });
-
-        if (!res.ok || !res.body) {
-          const payload = (await res.json().catch(() => null)) as {
-            error?: string;
-          } | null;
-          const errorMessage =
-            payload?.error ?? "Failed to get a response. Please try again.";
-
-          toast.error(errorMessage);
-          setMessages((prev) => {
-            const updated = [...prev];
-            updated[assistantIndex] = {
-              role: "assistant",
-              content:
-                updated[assistantIndex].content || errorMessage,
-              error: true,
-            };
-            return updated;
-          });
-          setStreaming(false);
-          return;
-        }
-
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        let streamFailed = false;
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          // Keep the last incomplete line in buffer
-          buffer = lines.pop() ?? "";
-
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            const data = line.slice(6);
-
-            try {
-              const parsed = JSON.parse(data) as ChatStreamEvent;
-
-              if (parsed.type === "conversation") {
-                setConversationId(parsed.conversationId);
-                onConversationIdChange?.(parsed.conversationId);
-                continue;
-              }
-
-              if (parsed.type === "token") {
-                setMessages((prev) => {
-                  const updated = [...prev];
-                  const msg = updated[assistantIndex];
-                  if (msg && msg.role === "assistant") {
-                    updated[assistantIndex] = {
-                      ...msg,
-                      content: msg.content + parsed.content,
-                    };
-                  }
-                  return updated;
-                });
-                continue;
-              }
-
-              if (parsed.type === "error") {
-                streamFailed = true;
-                toast.error(parsed.message);
-                setMessages((prev) => {
-                  const updated = [...prev];
-                  updated[assistantIndex] = {
-                    role: "assistant",
-                    content:
-                      updated[assistantIndex].content || parsed.message,
-                    error: true,
-                  };
-                  return updated;
-                });
-                continue;
-              }
-
-              if (parsed.type === "done") {
-                continue;
-              }
-            } catch {
-              continue;
-            }
-          }
-        }
-
-        if (!streamFailed) {
-          setMessages((prev) => {
-            const updated = [...prev];
-            const msg = updated[assistantIndex];
-            if (msg && msg.role === "assistant") {
-              updated[assistantIndex] = { ...msg, error: false };
-            }
-            return updated;
-          });
-        }
-      } catch {
-        toast.error("Connection error. Please try again.");
-        setMessages((prev) => {
-          const updated = [...prev];
-          updated[assistantIndex] = {
-            role: "assistant",
-            content:
-              updated[assistantIndex].content ||
-              "Connection error. Please try again.",
-            error: true,
-          };
-          return updated;
-        });
-      } finally {
-        setStreaming(false);
-      }
-    },
-    [episodeId, podcasterId, currentTimestamp, conversationId, onConversationIdChange],
+  const sendOptions = useMemo(
+    () => ({ episodeId, podcasterId, currentTimestamp }),
+    [episodeId, podcasterId, currentTimestamp],
   );
 
-  const sendMessage = useCallback(async () => {
+  const handleSend = useCallback(async () => {
     const trimmed = input.trim();
     if (!trimmed || streaming) return;
 
     onUserInteraction?.();
-
-    const userMessage: ChatMessage = { role: "user", content: trimmed };
     setInput("");
-
-    setMessages((prev) => {
-      const updated = [...prev, userMessage, { role: "assistant" as const, content: "" }];
-      return updated;
-    });
-
-    // The assistant message index is messages.length + 1 (after user message)
-    const assistantIndex = messages.length + 1;
-    await streamResponse(trimmed, assistantIndex);
-  }, [input, streaming, messages.length, streamResponse, onUserInteraction]);
+    await send(trimmed, sendOptions);
+  }, [input, streaming, onUserInteraction, send, sendOptions]);
 
   const handleRetry = useCallback(
     async (assistantIndex: number) => {
       if (streaming) return;
-
-      // Find the user message before the failed assistant message
-      const userMsg = messages[assistantIndex - 1];
-      if (!userMsg || userMsg.role !== "user") return;
-
-      // Reset the assistant message content and error state
-      setMessages((prev) => {
-        const updated = [...prev];
-        updated[assistantIndex] = { role: "assistant", content: "" };
-        return updated;
-      });
-
-      await streamResponse(userMsg.content, assistantIndex);
+      await retry(assistantIndex, sendOptions);
     },
-    [streaming, messages, streamResponse],
+    [streaming, retry, sendOptions],
   );
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      void sendMessage();
+      void handleSend();
     }
   };
 
   return (
     <div className="flex h-full flex-col rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-      {/* Header */}
       <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
         <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
           Chat
         </h2>
       </div>
 
-      {/* Messages */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-3">
+      <div
+        ref={messagesContainerRef}
+        className="flex-1 overflow-y-auto px-4 py-3"
+        role="log"
+        aria-live="polite"
+        aria-label="Conversation"
+      >
         {messages.length === 0 && (
           <p className="text-center text-sm text-zinc-400 dark:text-zinc-500">
             Ask a question about this episode…
           </p>
         )}
-        {messages.map((msg, i) => (
+        {messages.map((msg: ChatTurn, i) => (
           <div
             key={i}
             className={`mb-3 flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
@@ -283,9 +119,11 @@ export default function ChatPanel({
                     : "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100"
                 }`}
               >
-                {/* Typing indicator for empty assistant messages while streaming */}
                 {msg.role === "assistant" && msg.content === "" && streaming && !msg.error ? (
-                  <div className="flex items-center gap-1 py-1" aria-label="Typing">
+                  <div
+                    className="flex items-center gap-1 py-1"
+                    aria-label="Typing"
+                  >
                     <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-400 dark:bg-zinc-500" style={{ animationDelay: "0ms" }} />
                     <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-400 dark:bg-zinc-500" style={{ animationDelay: "150ms" }} />
                     <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-400 dark:bg-zinc-500" style={{ animationDelay: "300ms" }} />
@@ -294,7 +132,6 @@ export default function ChatPanel({
                   <p className="whitespace-pre-wrap">{msg.content}</p>
                 )}
               </div>
-              {/* Error indicator + Retry button */}
               {msg.error && (
                 <div className="mt-1 flex items-center gap-2">
                   <span className="text-xs text-red-500 dark:text-red-400">
@@ -316,7 +153,6 @@ export default function ChatPanel({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
       <div className="border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
         <div className="flex items-end gap-2">
           <textarea
@@ -335,7 +171,7 @@ export default function ChatPanel({
           />
           <button
             type="button"
-            onClick={() => void sendMessage()}
+            onClick={() => void handleSend()}
             disabled={streaming || !input.trim()}
             aria-label="Send message"
             className="inline-flex items-center justify-center rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-zinc-50 transition-colors hover:bg-zinc-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-300 dark:focus-visible:outline-zinc-50"
