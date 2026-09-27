@@ -5,6 +5,7 @@
 **Security**
 
 - The database now checks each person's Clerk identity before reading or changing their videos and conversations, including requests made directly to Convex.
+- The unused profile building endpoint is no longer callable, so it cannot mix transcript material from different users.
 
 ---
 
