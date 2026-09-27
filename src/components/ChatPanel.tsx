@@ -21,7 +21,7 @@ type ChatStreamEvent =
   | { type: "conversation"; conversationId: string }
   | { type: "token"; content: string }
   | { type: "done" }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string; code?: string };
 
 interface ChatPanelProps {
   episodeId: string;
@@ -107,7 +107,7 @@ export default function ChatPanel({
               content:
                 updated[assistantIndex].content || errorMessage,
               error: true,
-              modelSettingsNeeded: payload?.code === "MODEL_KEY_REQUIRED",
+              modelSettingsNeeded: payload?.code === "MODEL_KEY_REQUIRED" || payload?.code === "MODEL_RATE_LIMITED",
             };
             return updated;
           });
@@ -167,6 +167,7 @@ export default function ChatPanel({
                     content:
                       updated[assistantIndex].content || parsed.message,
                     error: true,
+                    modelSettingsNeeded: parsed.code === "MODEL_RATE_LIMITED",
                   };
                   return updated;
                 });
