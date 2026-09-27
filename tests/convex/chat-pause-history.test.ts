@@ -40,11 +40,15 @@ describe("chat pause history", () => {
     };
     const ctx = { db: { get: vi.fn(async (id: string) => records[id]), insert } };
 
-    await expect(startConversation._handler(ctx as never, {
+    const handler = (startConversation as unknown as {
+      _handler: (context: unknown, args: unknown) => Promise<unknown>;
+    })._handler;
+
+    await expect(handler(ctx, {
       userId: "user_1",
-      episodeId: "episode_1" as never,
-      podcasterId: "podcaster_1" as never,
-      conversationId: "conversation_1" as never,
+      episodeId: "episode_1",
+      podcasterId: "podcaster_1",
+      conversationId: "conversation_1",
       timestamp: 30,
       message: "What did they say?",
     })).rejects.toThrow("Conversation episode mismatch");
