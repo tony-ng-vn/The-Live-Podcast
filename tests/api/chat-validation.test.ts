@@ -310,6 +310,21 @@ describe("POST /api/chat validation", () => {
     });
   });
 
+  it("treats an empty model response as a failed answer and removes the pending question", async () => {
+    streamMock.mockImplementation(async function* () {});
+    const res = await POST(new Request("http://localhost/api/chat", {
+      method: "POST", body: JSON.stringify({
+        episodeId: "episode_1", podcasterId: "podcaster_1", timestamp: 30, message: "Explain this",
+      }),
+    }));
+    expect(res.status).toBe(503);
+    await expect(res.json()).resolves.toMatchObject({ code: "MODEL_UNAVAILABLE" });
+    expect(mutationMock).not.toHaveBeenCalledWith(apiRefs.chat.appendAssistantMessage, expect.anything());
+    expect(mutationMock).toHaveBeenCalledWith(apiRefs.chat.rollbackFailedQuestion, {
+      conversationId: "conv_1", messageId: "question_1",
+    });
+  });
+
   it("explains a model rate limit and points to model settings", async () => {
     streamMock.mockImplementation(async function* () {
       throw Object.assign(new Error("OpenRouter API error: 429 Too Many Requests - Provider returned error"), {
