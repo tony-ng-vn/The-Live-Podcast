@@ -4,6 +4,8 @@ import {
   getAuthenticatedConvexClient,
   api,
 } from "@/lib/convex/client";
+import { normalizeCaptions, type Caption } from "@/lib/transcript-captions";
+import type { TranscriptSegment as TimedSegment } from "../../../../convex/transcript";
 import { extractYouTubeId } from "@/lib/youtube";
 import { FRIENDLY_SERVER_ERROR } from "@/lib/api-error";
 import { recordServerError } from "@/lib/server-error";
@@ -36,7 +38,7 @@ interface TranscriptServiceResponse {
 interface SerpApiTranscriptResponse {
   search_metadata?: { status?: string };
   error?: string;
-  transcript?: Array<{ start_ms?: number; end_ms?: number; snippet?: string }>;
+  transcript?: Caption[];
 }
 
 interface YouTubeOEmbedResponse {
@@ -67,7 +69,7 @@ async function withTimeout<T>(
 
 async function fetchTranscriptSegments(
   videoId: string,
-): Promise<Array<{ text: string; offset: number; duration: number }>> {
+): Promise<TimedSegment[]> {
   if (process.env.TRANSCRIPT_PROVIDER === "serpapi") {
     return fetchSerpApiTranscriptSegments(videoId);
   }
@@ -123,7 +125,7 @@ async function fetchTranscriptSegments(
 
 async function fetchSerpApiTranscriptSegments(
   videoId: string,
-): Promise<Array<{ text: string; offset: number; duration: number }>> {
+): Promise<TimedSegment[]> {
   const apiKey = process.env.SERPAPI_API_KEY;
   if (!apiKey) {
     throw new TranscriptServiceError("SerpApi transcript key is not configured", 503);
@@ -161,15 +163,7 @@ async function fetchSerpApiTranscriptSegments(
     throw new TranscriptServiceError(`No transcript segments returned for video (${videoId})`, 422);
   }
 
-  return data.transcript.map((segment) => {
-    const { start_ms: start, end_ms: end, snippet } = segment;
-    if (typeof start !== "number" || typeof end !== "number" ||
-        !Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start ||
-        typeof snippet !== "string" || !snippet.trim()) {
-      throw new TranscriptServiceError(`Invalid SerpApi caption timing for video ${videoId}`, 503);
-    }
-    return { text: snippet, offset: start / 1000, duration: (end - start) / 1000 };
-  });
+  return normalizeCaptions(data.transcript);
 }
 
 async function fetchYouTubeMetadata(videoId: string): Promise<YouTubeOEmbedResponse | null> {
@@ -265,7 +259,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   // Fetch before Convex ingestion so the same timed segments work locally and in production.
-  let segments: Array<{ text: string; offset: number; duration: number }>;
+  let segments: TimedSegment[];
   const metadata = await fetchYouTubeMetadata(videoId);
   try {
     segments = await fetchTranscriptSegments(videoId);
