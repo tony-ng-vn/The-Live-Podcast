@@ -246,6 +246,67 @@ describe("POST /api/episodes validation", () => {
     expect(metadataCall?.[1]?.headers).not.toHaveProperty("X-Transcript-Token");
   });
 
+  it("ingests SerpApi captions with exact second offsets and durations", async () => {
+    vi.stubEnv("TRANSCRIPT_PROVIDER", "serpapi");
+    vi.stubEnv("SERPAPI_API_KEY", "test-key");
+    const fetchMock = vi.fn().mockImplementation(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/oembed")) {
+        return { ok: true, json: async () => ({ title: "Sample Episode", author_name: "Sample Host", author_url: "https://www.youtube.com/@sample-host" }) };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          search_metadata: { status: "Success" },
+          transcript: [
+            { start_ms: 1250, end_ms: 2600, snippet: "First caption" },
+            { start_ms: 2600, end_ms: 3825, snippet: "Second caption" },
+          ],
+        }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await POST(new Request("http://localhost/api/episodes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: VALID_URL }),
+    }));
+
+    expect(res.status).toBe(201);
+    expect(actionMock).toHaveBeenCalledWith(apiRefs.episodes.ingestEpisode, expect.objectContaining({
+      segments: [
+        { text: "First caption", offset: 1.25, duration: 1.35 },
+        { text: "Second caption", offset: 2.6, duration: 1.225 },
+      ],
+    }));
+    const transcriptCall = fetchMock.mock.calls.find(([input]) => String(input).includes("serpapi.com"));
+    expect(String(transcriptCall?.[0])).toContain("engine=youtube_video_transcript");
+    expect(String(transcriptCall?.[0])).toContain("v=dQw4w9WgXcQ");
+    expect(String(transcriptCall?.[0])).toContain("api_key=test-key");
+    expect(transcriptCall?.[1]?.headers).not.toHaveProperty("X-Transcript-Token");
+  });
+
+  it("records SerpApi failures without showing the provider error to the user", async () => {
+    vi.stubEnv("TRANSCRIPT_PROVIDER", "serpapi");
+    vi.stubEnv("SERPAPI_API_KEY", "test-key");
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (input: string | URL | Request) => {
+      if (String(input).includes("/oembed")) return { ok: false };
+      return { ok: true, json: async () => ({ search_metadata: { status: "Error" }, error: "Monthly quota exhausted" }) };
+    }));
+
+    const res = await POST(new Request("http://localhost/api/episodes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: VALID_URL }),
+    }));
+
+    expect(res.status).toBe(503);
+    expect((await res.json() as { error: string }).error).toContain("someone stole the apple");
+    expect(recordServerErrorMock).toHaveBeenCalledWith("episodes.transcript", expect.any(Error));
+    expect(actionMock).not.toHaveBeenCalled();
+  });
+
   it("returns 400 for non-YouTube URLs", async () => {
     const req = new Request("http://localhost/api/episodes", {
       method: "POST",
