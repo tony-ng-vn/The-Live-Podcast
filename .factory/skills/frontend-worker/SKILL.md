@@ -1,6 +1,6 @@
 ---
 name: frontend-worker
-description: Implements React components, pages, and client-side features for TonyPodcast using Next.js App Router with Tailwind CSS.
+description: Implements React components, pages, and client-side features for The Live Podcast using Next.js App Router with Tailwind CSS.
 ---
 
 # Frontend Worker
@@ -20,12 +20,12 @@ Use for features involving:
 ## Design Principles (from frontend-design skill)
 
 Before writing code, consider:
-- **Tone**: TonyPodcast should feel modern, conversational, and focused. Dark theme friendly.
+- **Tone**: The Live Podcast should feel modern, conversational, and focused. Dark theme friendly.
 - **Spacing**: Use Tailwind's spacing scale (multiples of 4px). No magic numbers.
-- **Typography**: Clear hierarchy — heading sizes for page titles, section headings, body text.
+- **Typography**: Clear hierarchy  -  heading sizes for page titles, section headings, body text.
 - **Color palette**: Primary accent color, neutrals, semantic colors (error red, success green).
 - **Layout**: 12-column grid concepts via Tailwind. Mobile-first responsive.
-- **Empty states**: Never leave areas blank — show instructional content with CTAs.
+- **Empty states**: Never leave areas blank  -  show instructional content with CTAs.
 - **Loading states**: Skeleton screens over spinners where possible.
 - **Accessibility**: 4.5:1 contrast, focus rings, semantic HTML, ARIA labels on icon buttons.
 

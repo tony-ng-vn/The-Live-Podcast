@@ -1,35 +1,35 @@
-# Auth & Polish — Behavioral Assertions
+# Auth & Polish  -  Behavioral Assertions
 
-### VAL-POLISH-001: Sign up with email/password — happy path
-A new visitor navigates to the sign-up page, enters a valid email and a password that meets minimum requirements (≥ 8 characters), and submits the form. A new `User` row is created in the database with the provided email. The user is redirected to the authenticated home/library page and sees their session (e.g., name or email in the header).
+### VAL-POLISH-001: Sign up with email/password  -  happy path
+A new visitor navigates to the sign-up page, enters a valid email and a password that meets minimum requirements (>= 8 characters), and submits the form. A new `User` row is created in the database with the provided email. The user is redirected to the authenticated home/library page and sees their session (e.g., name or email in the header).
 Evidence: Check the `User` table for the new record; verify the session cookie is set; confirm redirect URL is the authenticated landing page.
 
-### VAL-POLISH-002: Sign up with email/password — duplicate email
+### VAL-POLISH-002: Sign up with email/password  -  duplicate email
 A visitor attempts to sign up with an email that already exists. The form displays a toast or inline error message indicating the email is already registered. No duplicate `User` row is created.
 Evidence: Verify the error toast/message text; confirm the `User` table has exactly one row for that email.
 
-### VAL-POLISH-003: Sign up with email/password — validation errors
+### VAL-POLISH-003: Sign up with email/password  -  validation errors
 A visitor submits the sign-up form with an invalid email format or a password shorter than the minimum length. The form shows inline validation errors before any network request is made. The submit button remains enabled after correction.
 Evidence: Inspect the DOM for validation error elements; confirm no API call is fired (network tab or mock).
 
-### VAL-POLISH-004: Sign in with email/password — happy path
+### VAL-POLISH-004: Sign in with email/password  -  happy path
 An existing user enters their correct email and password on the sign-in page. They are authenticated, a session is created, and they are redirected to the authenticated home/library page.
 Evidence: Verify NextAuth session cookie; confirm redirect to the library/home page; check the session endpoint returns the user's data.
 
-### VAL-POLISH-005: Sign in with email/password — wrong password
+### VAL-POLISH-005: Sign in with email/password  -  wrong password
 A user enters a valid email but incorrect password. A toast notification appears with a generic error message (e.g., "Invalid credentials") that does not reveal whether the email exists. The user remains on the sign-in page.
 Evidence: Verify the toast message text; confirm no session cookie is set; verify the URL remains on the sign-in page.
 
-### VAL-POLISH-006: Sign in with email/password — non-existent email
+### VAL-POLISH-006: Sign in with email/password  -  non-existent email
 A visitor attempts to sign in with an email that does not exist. The same generic "Invalid credentials" toast is shown (identical to wrong-password case, to prevent user enumeration). No session is created.
 Evidence: Compare error message with VAL-POLISH-005; confirm no session cookie.
 
-### VAL-POLISH-007: Sign in with Google OAuth — happy path
-A user clicks "Sign in with Google" on the login page. They are redirected to Google's OAuth consent screen. After granting consent, they are redirected back to TonyPodcast, a session is created, and a `User` row exists (created if first-time, reused if returning). The user lands on the authenticated home/library page.
+### VAL-POLISH-007: Sign in with Google OAuth  -  happy path
+A user clicks "Sign in with Google" on the login page. They are redirected to Google's OAuth consent screen. After granting consent, they are redirected back to The Live Podcast, a session is created, and a `User` row exists (created if first-time, reused if returning). The user lands on the authenticated home/library page.
 Evidence: Verify the OAuth redirect flow (302 to Google, callback URL); check `User` table; verify session cookie.
 
-### VAL-POLISH-008: Sign in with Google OAuth — cancelled/denied
-A user clicks "Sign in with Google" but cancels or denies consent on Google's page. They are redirected back to the TonyPodcast sign-in page with an appropriate error toast (e.g., "Sign in cancelled"). No session is created.
+### VAL-POLISH-008: Sign in with Google OAuth  -  cancelled/denied
+A user clicks "Sign in with Google" but cancels or denies consent on Google's page. They are redirected back to The Live Podcast sign-in page with an appropriate error toast (e.g., "Sign in cancelled"). No session is created.
 Evidence: Verify redirect back to sign-in page; confirm error toast is displayed; confirm no session cookie.
 
 ### VAL-POLISH-009: Sign out
@@ -45,15 +45,15 @@ An unauthenticated HTTP client sends a request to a protected API route (e.g., `
 Evidence: Send a request without session cookie; verify 401 status code and error JSON; confirm no sensitive data in response body.
 
 ### VAL-POLISH-012: Auth state persists across page refreshes
-An authenticated user refreshes the browser on any page. The session is preserved — the user remains authenticated, sees their identity in the UI, and can continue using the app without re-authenticating.
+An authenticated user refreshes the browser on any page. The session is preserved  -  the user remains authenticated, sees their identity in the UI, and can continue using the app without re-authenticating.
 Evidence: Sign in, note session cookie, refresh the page; verify the session endpoint still returns user data; confirm the UI shows the authenticated state.
 
 ### VAL-POLISH-013: Auth state persists across tabs
-An authenticated user opens a new browser tab and navigates to TonyPodcast. The session from the original tab carries over; the user is authenticated in the new tab without signing in again.
+An authenticated user opens a new browser tab and navigates to The Live Podcast. The session from the original tab carries over; the user is authenticated in the new tab without signing in again.
 Evidence: Open a new tab to a protected route; verify no redirect to sign-in; confirm session data is present.
 
 ### VAL-POLISH-014: Toast notification on failed API call
-When an API call fails (e.g., network error, server 500), a toast notification appears with a user-friendly error message. The toast auto-dismisses after a reasonable duration (3–5 seconds) or can be manually dismissed.
+When an API call fails (e.g., network error, server 500), a toast notification appears with a user-friendly error message. The toast auto-dismisses after a reasonable duration (3-5 seconds) or can be manually dismissed.
 Evidence: Simulate a failed API call (e.g., mock server error); verify toast appears with readable message; verify auto-dismiss timing or manual dismiss.
 
 ### VAL-POLISH-015: Toast notification on invalid YouTube URL
@@ -84,28 +84,28 @@ Evidence: Mock LLM API to fail; verify retry attempts in server logs or network 
 When the transcript fetch fails due to a transient error (e.g., network timeout), the system retries automatically. If retries are exhausted, the user sees an error message with an option to retry manually.
 Evidence: Mock transcript API to fail intermittently; verify retry behavior; verify user-facing error and retry affordance.
 
-### VAL-POLISH-022: Responsive layout — mobile watch page (stacked player + chat)
-On viewports ≤ 768px (mobile), the watch page displays the video player stacked above the chat interface (single column layout). Both elements are fully visible without horizontal scrolling. The chat input is accessible and not obscured by the video player.
+### VAL-POLISH-022: Responsive layout  -  mobile watch page (stacked player + chat)
+On viewports <= 768px (mobile), the watch page displays the video player stacked above the chat interface (single column layout). Both elements are fully visible without horizontal scrolling. The chat input is accessible and not obscured by the video player.
 Evidence: Resize browser to 375px width or use mobile emulation; verify player is above chat in a single column; verify no horizontal scroll; verify chat input is reachable.
 
-### VAL-POLISH-023: Responsive layout — tablet watch page
+### VAL-POLISH-023: Responsive layout  -  tablet watch page
 On viewports between 769px and 1024px (tablet), the watch page either uses a side-by-side layout with reduced sizing or a stacked layout with larger elements. The layout is usable without horizontal scrolling.
-Evidence: Resize browser to 768–1024px; verify layout adapts; verify no overflow.
+Evidence: Resize browser to 768-1024px; verify layout adapts; verify no overflow.
 
-### VAL-POLISH-024: Responsive layout — desktop watch page
-On viewports ≥ 1025px (desktop), the watch page displays the video player and chat side by side. Both have adequate space; the chat area is at least 300px wide.
+### VAL-POLISH-024: Responsive layout  -  desktop watch page
+On viewports >= 1025px (desktop), the watch page displays the video player and chat side by side. Both have adequate space; the chat area is at least 300px wide.
 Evidence: View at 1280px+ width; verify side-by-side layout; measure chat area width.
 
-### VAL-POLISH-025: Responsive library page — grid adapts to mobile
-On mobile viewports (≤ 768px), the library page displays podcaster/episode cards in a single-column grid. Cards span the full width of the viewport minus padding. No horizontal scrolling occurs.
+### VAL-POLISH-025: Responsive library page  -  grid adapts to mobile
+On mobile viewports (<= 768px), the library page displays podcaster/episode cards in a single-column grid. Cards span the full width of the viewport minus padding. No horizontal scrolling occurs.
 Evidence: Resize to 375px; verify single-column layout; verify no horizontal overflow.
 
-### VAL-POLISH-026: Responsive library page — grid adapts to tablet
-On tablet viewports (769–1024px), the library grid displays 2 columns of cards. Cards are evenly sized with consistent gaps.
+### VAL-POLISH-026: Responsive library page  -  grid adapts to tablet
+On tablet viewports (769-1024px), the library grid displays 2 columns of cards. Cards are evenly sized with consistent gaps.
 Evidence: Resize to ~800px; count columns; verify consistent gap and card sizes.
 
-### VAL-POLISH-027: Responsive library page — grid adapts to desktop
-On desktop viewports (≥ 1025px), the library grid displays 3 or more columns. Cards are consistently sized and the layout fills available space proportionally.
+### VAL-POLISH-027: Responsive library page  -  grid adapts to desktop
+On desktop viewports (>= 1025px), the library grid displays 3 or more columns. Cards are consistently sized and the layout fills available space proportionally.
 Evidence: Resize to 1280px+; count columns; verify layout fills width.
 
 ### VAL-POLISH-028: Streaming LLM tokens appear progressively in chat
@@ -169,7 +169,7 @@ While the LLM is streaming a response, the chat input field and/or send button i
 Evidence: Send a message; attempt to type and send another while streaming is in progress; verify the input is disabled or the send button is non-interactive.
 
 ### VAL-POLISH-043: Empty state on library page for new users
-A newly authenticated user with no saved podcasters or episodes sees a friendly empty state on the library page (e.g., "No podcasts yet — add your first one!") rather than a blank page or broken grid.
+A newly authenticated user with no saved podcasters or episodes sees a friendly empty state on the library page (e.g., "No podcasts yet  -  add your first one!") rather than a blank page or broken grid.
 Evidence: Sign up as a new user; navigate to the library page; verify the empty state message and/or call-to-action is displayed.
 
 ### VAL-POLISH-044: Network-offline toast notification
