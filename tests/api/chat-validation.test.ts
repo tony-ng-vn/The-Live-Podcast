@@ -287,4 +287,27 @@ describe("POST /api/chat validation", () => {
       errorId: expect.any(String),
     });
   });
+
+  it("explains a model rate limit and points to model settings", async () => {
+    streamMock.mockImplementation(async function* () {
+      throw Object.assign(new Error("OpenRouter API error: 429 Too Many Requests - Provider returned error"), {
+        code: "MODEL_RATE_LIMITED",
+      });
+    });
+
+    const res = await POST(new Request("http://localhost/api/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        episodeId: "episode_1", podcasterId: "podcaster_1", timestamp: 30,
+        message: "Explain this",
+      }),
+    }));
+
+    expect(res.status).toBe(429);
+    await expect(res.json()).resolves.toMatchObject({
+      code: "MODEL_RATE_LIMITED",
+      error: expect.stringContaining("Model settings"),
+      errorId: expect.any(String),
+    });
+  });
 });
