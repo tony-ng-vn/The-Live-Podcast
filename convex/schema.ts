@@ -81,6 +81,15 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_conversation", ["conversationId"]),
 
+  serverErrors: defineTable({
+    id: v.string(),
+    timestamp: v.string(),
+    source: v.string(),
+    name: v.string(),
+    message: v.string(),
+    stack: v.optional(v.string()),
+  }).index("by_error_id", ["id"]),
+
   podcasterProfiles: defineTable({
     podcasterId: v.id("podcasters"),
     summaryText: v.string(),

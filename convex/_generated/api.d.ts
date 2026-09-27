@@ -15,6 +15,7 @@ import type * as episodes from "../episodes.js";
 import type * as llm from "../llm.js";
 import type * as memory from "../memory.js";
 import type * as profiles from "../profiles.js";
+import type * as serverErrors from "../serverErrors.js";
 import type * as transcript from "../transcript.js";
 import type * as transcriptChunks from "../transcriptChunks.js";
 import type * as users from "../users.js";
@@ -33,6 +34,7 @@ declare const fullApi: ApiFromModules<{
   llm: typeof llm;
   memory: typeof memory;
   profiles: typeof profiles;
+  serverErrors: typeof serverErrors;
   transcript: typeof transcript;
   transcriptChunks: typeof transcriptChunks;
   users: typeof users;
