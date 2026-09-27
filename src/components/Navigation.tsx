@@ -19,7 +19,7 @@ export default function Navigation() {
           href="/"
           className="text-lg font-bold tracking-tight text-zinc-900 dark:text-zinc-50"
         >
-          TonyPodcast
+          The Live Podcast
         </Link>
 
         {/* Desktop nav */}

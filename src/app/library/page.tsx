@@ -99,16 +99,16 @@ export default function LibraryPage() {
       {!loading && !loadError && episodes.length === 0 && (
         <div className="mt-20 flex flex-col items-center text-center">
           <p className="text-lg text-zinc-500 dark:text-zinc-400">
-            No podcasts yet
+            No videos yet
           </p>
           <p className="mt-2 text-sm text-zinc-400 dark:text-zinc-500">
-            Add your first podcast episode to get started.
+            Add your first YouTube video to get started.
           </p>
           <Link
             href="/"
             className="mt-6 inline-flex items-center rounded-full bg-zinc-900 px-8 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
           >
-            Add a Podcast
+            Add a Video
           </Link>
         </div>
       )}

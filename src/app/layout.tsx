@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TonyPodcast",
-  description: "Interactive AI Podcast Companion",
+  title: "The Live Podcast",
+  description: "Talk with a YouTube video at the moment you pause.",
 };
 
 export default function RootLayout({
