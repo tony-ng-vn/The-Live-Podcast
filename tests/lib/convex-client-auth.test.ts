@@ -24,7 +24,7 @@ describe("authenticated Convex HTTP client", () => {
     await getAuthenticatedConvexClient(getTokenA);
     await getAuthenticatedConvexClient(getTokenB);
 
-    expect(getTokenA).toHaveBeenCalledWith({ template: "convex" });
+    expect(getTokenA).toHaveBeenCalledWith();
     expect(clientConstructor).toHaveBeenNthCalledWith(1, "https://example.convex.cloud", { auth: "token-a" });
     expect(clientConstructor).toHaveBeenNthCalledWith(2, "https://example.convex.cloud", { auth: "token-b" });
   });

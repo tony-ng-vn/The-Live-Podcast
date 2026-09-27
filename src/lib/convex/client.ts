@@ -54,9 +54,9 @@ export function getConvexClient(): ConvexHttpClient {
 }
 
 export async function getAuthenticatedConvexClient(
-  getToken: (options: { template: string }) => Promise<string | null>,
+  getToken: () => Promise<string | null>,
 ): Promise<ConvexHttpClient> {
-  const token = await getToken({ template: "convex" });
+  const token = await getToken();
   if (!token) {
     throw new ConvexConfigurationError("Clerk Convex token is unavailable.");
   }
