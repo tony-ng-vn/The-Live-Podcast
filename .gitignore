@@ -43,6 +43,7 @@ src/generated/prisma/
 
 # python transcript service caches
 transcript-service/__pycache__/
+transcript-service/.venv/
 
 # empty legacy directory
 transcript_service/

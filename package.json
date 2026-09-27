@@ -1,10 +1,11 @@
 {
   "name": "tony-podcast",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "scripts": {
     "predev": "node scripts/check-local-setup.mjs",
     "dev": "next dev",
+    "dev:all": "node scripts/dev-all.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
