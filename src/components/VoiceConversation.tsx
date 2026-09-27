@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { apiErrorMessage, publicFailure, PublicRequestError } from "@/lib/api-error";
 import { SpeechRecognitionService } from "@/lib/voice/speech-recognition";
 import { SpeechSynthesisService } from "@/lib/voice/speech-synthesis";
 
@@ -10,7 +11,7 @@ type ChatStreamEvent =
   | { type: "conversation"; conversationId: string }
   | { type: "token"; content: string }
   | { type: "done" }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string; code?: string };
 
 interface VoiceConversationProps {
   episodeId: string;
@@ -60,8 +61,14 @@ export default function VoiceConversation({
       if (!res.ok || !res.body) {
         const payload = (await res.json().catch(() => null)) as {
           error?: string;
+          code?: string;
+          conversationId?: string;
         } | null;
-        throw new Error(payload?.error ?? "Chat API request failed");
+        if (payload?.conversationId) {
+          setConversationId(payload.conversationId);
+          onConversationIdChange?.(payload.conversationId);
+        }
+        throw new PublicRequestError(apiErrorMessage(payload, res.status, "MODEL_UNAVAILABLE"));
       }
 
       const reader = res.body.getReader();
@@ -100,7 +107,7 @@ export default function VoiceConversation({
           }
 
           if (parsed.type === "error") {
-            throw new Error(parsed.message);
+            throw new PublicRequestError(publicFailure(parsed.code, "MODEL_UNAVAILABLE").error);
           }
         }
       }
@@ -132,9 +139,9 @@ export default function VoiceConversation({
             setVoiceState("speaking");
 
             synthesisRef.current?.speak(response);
-          }).catch(() => {
+          }).catch((error: unknown) => {
             if (!mountedRef.current) return;
-            setLastResponse("Sorry, something went wrong. Please try again.");
+            setLastResponse(error instanceof PublicRequestError ? error.message : publicFailure("MODEL_UNAVAILABLE").error);
             setVoiceState("idle");
           });
         }

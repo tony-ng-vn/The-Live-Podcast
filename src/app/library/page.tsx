@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import EpisodeCard from "@/components/EpisodeCard";
-import { FRIENDLY_SERVER_ERROR, readApiError } from "@/lib/api-error";
+import { publicFailure, readApiError } from "@/lib/api-error";
 
 interface Podcaster {
   name: string;
@@ -41,13 +41,13 @@ export default function LibraryPage() {
     try {
       const res = await fetch("/api/episodes");
       if (!res.ok) {
-        setLoadError(await readApiError(res));
+        setLoadError(await readApiError(res, "LIBRARY_UNAVAILABLE"));
         return;
       }
       const data = (await res.json()) as Episode[];
       setEpisodes(data);
     } catch {
-      setLoadError(FRIENDLY_SERVER_ERROR);
+      setLoadError(publicFailure("LIBRARY_UNAVAILABLE").error);
     } finally {
       setLoading(false);
     }

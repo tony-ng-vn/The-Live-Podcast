@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { publicFailure, readApiError } from "@/lib/api-error";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
@@ -54,7 +55,7 @@ export default function WatchPage() {
         const res = await fetch(`/api/episodes/${params.id}`);
         if (!res.ok) {
           setError(true);
-          toast.error("Failed to load episode.");
+          toast.error(await readApiError(res, "VIDEO_LOAD_UNAVAILABLE"));
           setLoading(false);
           return;
         }
@@ -62,7 +63,7 @@ export default function WatchPage() {
         setEpisode(data);
       } catch {
         setError(true);
-        toast.error("Failed to load episode. Please check your connection.");
+        toast.error(publicFailure("VIDEO_LOAD_UNAVAILABLE").error);
       } finally {
         setLoading(false);
       }

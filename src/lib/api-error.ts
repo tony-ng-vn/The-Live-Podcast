@@ -58,3 +58,5 @@ export async function readApiError(response: Response, fallback: PublicFailureCo
   }
   return apiErrorMessage(body, response.status, fallback);
 }
+
+export class PublicRequestError extends Error {}
