@@ -1,3 +1,13 @@
+## v0.4.3
+
+2026-09-27
+
+**Security**
+
+- The production database no longer exposes a command that could erase all saved videos and conversations.
+
+---
+
 ## v0.4.2
 
 2026-09-27
