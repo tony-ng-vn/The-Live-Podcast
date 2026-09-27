@@ -8,12 +8,10 @@
  * @module
  */
 
-import type * as admin from "../admin.js";
+import type * as auth from "../auth.js";
 import type * as chat from "../chat.js";
-import type * as embeddings from "../embeddings.js";
 import type * as episodes from "../episodes.js";
 import type * as llm from "../llm.js";
-import type * as memory from "../memory.js";
 import type * as profiles from "../profiles.js";
 import type * as transcript from "../transcript.js";
 import type * as transcriptChunks from "../transcriptChunks.js";
@@ -26,12 +24,10 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  admin: typeof admin;
+  auth: typeof auth;
   chat: typeof chat;
-  embeddings: typeof embeddings;
   episodes: typeof episodes;
   llm: typeof llm;
-  memory: typeof memory;
   profiles: typeof profiles;
   transcript: typeof transcript;
   transcriptChunks: typeof transcriptChunks;
