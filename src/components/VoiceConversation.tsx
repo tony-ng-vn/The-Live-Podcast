@@ -24,7 +24,7 @@ export default function VoiceConversation({
   onUserInteraction,
   active,
 }: VoiceConversationProps) {
-  const { messages, send } = chat;
+  const { send } = chat;
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [muted, setMuted] = useState(false);
   const [transcript, setTranscript] = useState("");
@@ -61,7 +61,27 @@ export default function VoiceConversation({
 
   const lastAssistantText = useRef("");
   const speakRef = useRef<(text: string) => void>(() => {});
+  const onMicErrorRef = useRef(onMicError);
+  const sendRef = useRef(send);
 
+  useEffect(() => {
+    onMicErrorRef.current = onMicError;
+  }, [onMicError]);
+
+  useEffect(() => {
+    sendRef.current = send;
+  }, [send]);
+
+  /**
+   * Deliberately has no reactive dependencies. Everything it needs is read
+   * through refs, so a single instance stays valid for the component's
+   * lifetime.
+   *
+   * This must NOT depend on `messages` or `send`: the synthesis effect below is
+   * mount-only, so it captures whatever instance of this callback existed on
+   * the first render. When it depended on `messages`, every reply was appended
+   * into the first assistant bubble and TTS never fired at all.
+   */
   const startListening = useCallback(() => {
     if (!mountedRef.current || mutedRef.current || !activeRef.current) return;
 
@@ -78,26 +98,28 @@ export default function VoiceConversation({
         setVoiceState("processing");
         recognition.stop();
 
-        void send(text, sendOptionsRef.current)
-          .catch(() => undefined)
-          .finally(() => {
-            // Speak whatever landed in the shared history, so partial output
-            // and retries are reflected without a second copy of the stream.
+        void sendRef
+          .current(text, sendOptionsRef.current)
+          .catch(() => null)
+          .then((reply) => {
             if (!mountedRef.current) return;
-            const last = messages[messages.length - 1];
-            if (!last || last.role !== "assistant" || !last.content) {
+            // The viewer may have switched to text mode while this streamed.
+            if (!activeRef.current) return;
+            if (!reply) {
               setVoiceState("idle");
               return;
             }
-            lastAssistantText.current = last.content;
+            // `send` resolves with the assembled reply, so no stale `messages`
+            // read is needed here.
+            lastAssistantText.current = reply;
             setVoiceState("speaking");
-            speakRef.current(last.content);
+            speakRef.current(reply);
           });
       },
       onError: (error) => {
         if (!mountedRef.current) return;
         if (error === "not-allowed" || error === "audio-capture") {
-          onMicError?.();
+          onMicErrorRef.current?.();
         }
         setVoiceState("idle");
       },
@@ -113,7 +135,7 @@ export default function VoiceConversation({
 
     recognitionRef.current = recognition;
     recognition.start();
-  }, [messages, send, onMicError]);
+  }, []);
 
   // Initialise synthesis once. The synthesis service is created exactly once
   // for the lifetime of the component; only its callbacks are refreshed.

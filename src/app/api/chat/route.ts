@@ -60,19 +60,6 @@ export async function POST(request: Request): Promise<Response> {
   }
   const { userId, convex } = authed;
 
-  const limit = rateLimit(`chat:${userId}`, CHAT_RATE_LIMIT, CHAT_RATE_WINDOW_MS);
-  if (!limit.allowed) {
-    return Response.json(
-      {
-        error: `Too many requests. Try again in ${limit.retryAfterSeconds}s.`,
-      },
-      {
-        status: 429,
-        headers: { "Retry-After": String(limit.retryAfterSeconds) },
-      },
-    );
-  }
-
   let body: ChatRequestBody;
   try {
     body = (await request.json()) as ChatRequestBody;
@@ -102,6 +89,16 @@ export async function POST(request: Request): Promise<Response> {
     return jsonError(
       `Message is too long (${message.length} characters, max ${MAX_MESSAGE_LENGTH})`,
       400,
+    );
+  }
+
+  // Rate limited after validation so malformed requests cannot exhaust a
+  // viewer's quota. This is the only brake between a client and the LLM bill.
+  const limit = rateLimit(`chat:${userId}`, CHAT_RATE_LIMIT, CHAT_RATE_WINDOW_MS);
+  if (!limit.allowed) {
+    return Response.json(
+      { error: `Too many requests. Try again in ${limit.retryAfterSeconds}s.` },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
     );
   }
 
@@ -182,10 +179,20 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const conversationIdForStream = String(activeConversationId);
+  // Aborted when the response body is cancelled (client disconnected).
+  const providerAbort = new AbortController();
 
   // Return the stream immediately instead of awaiting the first token, so
   // time-to-first-byte is not gated on the provider handshake.
   const body_ = new ReadableStream<Uint8Array>({
+    /**
+     * Called when the client goes away. Aborting the provider fetch here is
+     * what makes the client's AbortController actually stop the token spend;
+     * without it the server would keep streaming to nobody.
+     */
+    cancel() {
+      providerAbort.abort();
+    },
     async start(controller) {
       const send = (event: ChatStreamEvent) => {
         try {
@@ -200,11 +207,27 @@ export async function POST(request: Request): Promise<Response> {
       try {
         send({ type: "conversation", conversationId: conversationIdForStream });
 
-        const stream = getLLMProvider().stream(llmMessages);
+        const stream = getLLMProvider().stream(llmMessages, {
+          signal: providerAbort.signal,
+        });
 
         for await (const token of stream) {
+          if (providerAbort.signal.aborted) break;
           fullContent += token;
           send({ type: "token", content: token });
+        }
+
+        if (providerAbort.signal.aborted) {
+          // Persist whatever arrived before the viewer left, then stop.
+          if (fullContent.length > 0) {
+            await convex
+              .mutation(api.chat.appendAssistantMessage, {
+                conversationId: activeConversationId,
+                content: fullContent,
+              })
+              .catch(() => undefined);
+          }
+          return;
         }
 
         if (fullContent.length > 0) {
@@ -218,6 +241,8 @@ export async function POST(request: Request): Promise<Response> {
 
         send({ type: "done" });
       } catch (error) {
+        if (providerAbort.signal.aborted) return;
+
         const message =
           error instanceof Error
             ? error.message

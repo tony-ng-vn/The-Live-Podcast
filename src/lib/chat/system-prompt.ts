@@ -80,14 +80,15 @@ export function buildMvpSystemPrompt(args: SystemPromptArgs): string {
 }
 
 /**
- * Trims conversation history to fit a token-ish budget.
+ * Trims conversation history to fit a character budget.
  *
  * History is replayed on every turn alongside the full transcript, so an
  * untrimmed conversation makes each successive request quadratically more
- * expensive. Keeps the most recent turns and drops the middle, which is the
+ * expensive. Keeps the newest turns and drops from the middle, which is the
  * standard trade for a chat transcript where recency dominates.
  *
- * Always preserves a leading user message so the exchange stays well-formed.
+ * Always returns a well-formed exchange: it never starts with an assistant
+ * turn, and never returns an empty list while messages exist.
  */
 export function trimHistory(
   messages: Array<{ role: "user" | "assistant"; content: string }>,
@@ -99,30 +100,47 @@ export function trimHistory(
   const totalChars = messages.reduce((sum, m) => sum + m.content.length, 0);
   if (totalChars <= maxChars) return messages;
 
-  const recent = messages.slice(-keepRecentTurns);
-  const head = messages.slice(0, messages.length - keepRecentTurns);
+  // Walk backwards from the newest message, admitting turns while they fit.
+  // Each kept run must start at a user turn, so an assistant turn is only
+  // admitted when the user turn before it already is.
+  const kept: Array<{ role: "user" | "assistant"; content: string }> = [];
+  let used = 0;
 
-  // The oldest kept message must be a user turn so the provider does not
-  // receive a conversation that opens with an assistant reply.
-  while (recent.length > 0 && recent[0].role !== "user") {
-    recent.shift();
-  }
-  if (recent.length === 0) return [];
-
-  let budget = maxChars - recent.reduce((sum, m) => sum + m.content.length, 0);
-  const kept: typeof head = [];
-
-  for (let i = head.length - 1; i >= 0; i -= 1) {
-    const message = head[i];
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
     const cost = message.content.length;
-    if (cost > budget) break;
+
+    if (used + cost > maxChars) break;
+
+    if (message.role === "assistant" && kept.length === 0) {
+      // A trailing assistant turn with no user turn before it is unreachable
+      // unless the preceding user turn also fits; stop here rather than
+      // emitting an assistant-led conversation.
+      break;
+    }
+
     kept.unshift(message);
-    budget -= cost;
+    used += cost;
+
+    // Never keep more than the recency window, regardless of budget.
+    if (kept.length >= keepRecentTurns * 2) break;
   }
 
-  if (kept.length > 0 && kept[0].role !== "user") {
+  // Drop a leading assistant turn if the budget stopped us mid-pair.
+  while (kept.length > 0 && kept[0].role !== "user") {
     kept.shift();
   }
 
-  return [...kept, ...recent];
+  // If not even the newest user turn fits, return that question on its own
+  // rather than nothing: the model still needs to know what it is answering.
+  if (kept.length === 0) {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      if (messages[i].role === "user") {
+        return [messages[i]];
+      }
+    }
+    return [];
+  }
+
+  return kept;
 }

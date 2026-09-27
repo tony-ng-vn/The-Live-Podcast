@@ -19,8 +19,12 @@ interface Episode {
   id: string;
   title: string;
   youtubeId: string;
-  podcaster: { id: string; name: string };
+  // A dangling podcasterId yields null from the API, so treat it as optional
+  // rather than dereferencing blindly.
+  podcaster: { id: string; name: string } | null;
 }
+
+const UNKNOWN_PODCASTER = { id: "", name: "Unknown podcaster" };
 
 export default function WatchPage() {
   const params = useParams<{ id: string }>();
@@ -125,13 +129,15 @@ export default function WatchPage() {
     }, 300);
   }, [resetChat]);
 
+  const podcaster = episode?.podcaster ?? UNKNOWN_PODCASTER;
+
   const sendOptions = useMemo(
     () => ({
       episodeId: episode?.id ?? "",
-      podcasterId: episode?.podcaster.id ?? "",
+      podcasterId: podcaster.id,
       currentTimestamp: chatTimestamp,
     }),
-    [episode?.id, episode?.podcaster.id, chatTimestamp],
+    [episode?.id, podcaster.id, chatTimestamp],
   );
 
   if (loading) {
@@ -182,7 +188,7 @@ export default function WatchPage() {
           </span>
         </div>
         <p className="mb-6 text-sm text-zinc-500 dark:text-zinc-400">
-          {episode.podcaster.name}
+          {podcaster.name}
         </p>
 
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
@@ -332,7 +338,7 @@ export default function WatchPage() {
                 <div className={voiceMode ? "hidden" : "flex-1"}>
                   <ChatPanel
                     episodeId={episode.id}
-                    podcasterId={episode.podcaster.id}
+                    podcasterId={podcaster.id}
                     currentTimestamp={chatTimestamp}
                     chat={chat}
                     onUserInteraction={pauseVideoForInteraction}

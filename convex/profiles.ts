@@ -11,8 +11,12 @@ import {
 import { ForbiddenError, requireUserId } from "./auth";
 import { FORBIDDEN_PODCASTER_MESSAGE } from "../src/lib/convex/auth-messages";
 
-const MAX_PROFILE_SOURCE_EPISODES = 10;
-const PROFILE_SAMPLE_CHUNK_STRIDE = 12;
+const MAX_PROFILE_SOURCE_EPISODES = 5;
+/**
+ * Chunks sampled per episode. Five episodes x a 2-hour episode (~1440 chunks)
+ * is ~7,200 documents, comfortably inside Convex's per-transaction read limit.
+ */
+const PROFILE_SAMPLE_TARGET = 36;
 
 export const getPodcasterById = query({
   args: {
@@ -192,6 +196,11 @@ export const updateUserPodcasterMemoryFromConversation = internalAction({
  *
  * Taking the 5 most recent chunks sampled only the final ~25 seconds of an
  * episode, which is a poor basis for a personality profile.
+ *
+ * Uses single-pass reservoir sampling (Algorithm R) so each chunk document is
+ * read exactly once. The previous `.collect()` read every chunk of every
+ * candidate episode, which for ten long episodes is tens of thousands of
+ * documents and exceeds Convex's per-transaction read limit.
  */
 export const getProfileSourceData = internalQuery({
   args: {
@@ -206,35 +215,44 @@ export const getProfileSourceData = internalQuery({
 
     const withSamples = await Promise.all(
       episodes.map(async (episode) => {
-        const chunks = await ctx.db
+        const reservoir: string[] = [];
+        let seen = 0;
+
+        for await (const chunk of ctx.db
           .query("transcriptChunks")
           .withIndex("by_episode_start_time", (q) =>
             q.eq("episodeId", episode._id),
-          )
-          .collect();
+          )) {
+          if (reservoir.length < PROFILE_SAMPLE_TARGET) {
+            reservoir.push(chunk.text);
+            continue;
+          }
 
-        if (chunks.length === 0) {
-          return { title: episode.title, sampleText: "" };
+          // Replace an existing sample with probability target/seen. The
+          // draw is deterministic so repeated runs sample consistently.
+          const j = deterministicBelow(seen, PROFILE_SAMPLE_TARGET);
+          if (j < PROFILE_SAMPLE_TARGET) {
+            reservoir[j] = chunk.text;
+          }
+          seen += 1;
         }
 
-        const takeEvery = Math.max(
-          1,
-          Math.ceil(chunks.length / (PROFILE_SAMPLE_CHUNK_STRIDE * 3)),
-        );
-        const sampled = chunks.filter(
-          (_, index) => index % takeEvery === 0,
-        );
-
-        return {
-          title: episode.title,
-          sampleText: sampled.map((chunk) => chunk.text).join(" "),
-        };
+        return { title: episode.title, sampleText: reservoir.join(" ") };
       }),
     );
 
     return { episodes: withSamples };
   },
 });
+
+/** Deterministic value in [0, bound) derived from `seed`, for stable sampling. */
+function deterministicBelow(seed: number, bound: number): number {
+  let h = (seed ^ 0x9e3779b9) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35) >>> 0;
+  h = (h ^ (h >>> 16)) >>> 0;
+  return h % bound;
+}
 
 export const getConversationMessages = internalQuery({
   args: {

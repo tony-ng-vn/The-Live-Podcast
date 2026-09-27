@@ -23,10 +23,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify Convex codegen is up to date
-        run: |
-          npx convex codegen --typecheck disable
-          git diff --exit-code -- convex/_generated
+      # NOTE: `convex codegen` requires deployment credentials (it resolves a
+      # deployment before it can generate), so it cannot run as an anonymous
+      # CI step. Enable this once CONVEX_DEPLOY_KEY is configured as a secret.
+      # - name: Verify Convex codegen is up to date
+      #   run: |
+      #     npx convex codegen --typecheck disable
+      #     git diff --exit-code -- convex/_generated
 
       - name: Lint
         run: npm run lint

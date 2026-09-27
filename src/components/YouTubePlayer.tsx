@@ -62,7 +62,15 @@ const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>(
     const initPlayer = useCallback(() => {
       if (!containerRef.current || playerRef.current) return;
 
-      playerRef.current = new window.YT.Player(containerRef.current, {
+      // `YT.Player` replaces the container element with an iframe and
+      // `destroy()` does not put it back, so hand it a fresh child on every
+      // (re)initialisation. Without this, a `videoId` change remounts the
+      // player into a detached node and the page shows a black box.
+      const host = document.createElement("div");
+      host.className = "h-full w-full";
+      containerRef.current.replaceChildren(host);
+
+      playerRef.current = new window.YT.Player(host, {
         videoId,
         playerVars: {
           autoplay: 0,
@@ -108,13 +116,12 @@ const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>(
       return undefined;
     }, [initPlayer]);
 
-    // Tear the player down on unmount. Without this, navigating
-    // library -> watch -> library left live YT.Player instances (and their
-    // iframes and event listeners) behind.
+    // Tear the player down when the component goes away or the video changes.
+    // Without this, navigating library -> watch -> library left live
+    // YT.Player instances (and their iframes and listeners) behind.
     useEffect(() => {
       return () => {
         destroyPlayer();
-        setReady(false);
       };
     }, [destroyPlayer, videoId]);
 

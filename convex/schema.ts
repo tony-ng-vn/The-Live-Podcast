@@ -43,6 +43,13 @@ export default defineSchema({
     text: v.string(),
     startTime: v.number(),
     endTime: v.number(),
+    // Retained but currently unwritten. The vector index that consumed these
+    // was removed while embeddings were deferred, to avoid paying index write
+    // cost on ~1440 chunk inserts per episode. The fields are kept because
+    // Convex refuses to drop a field that still holds data, so removing them
+    // would block deploys on any deployment that ever ran the embeddings code.
+    embedding: v.optional(v.array(v.float64())),
+    embeddingSource: v.optional(v.string()),
   })
     .index("by_episode", ["episodeId"])
     .index("by_episode_start_time", ["episodeId", "startTime"])
@@ -57,7 +64,6 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_user_podcaster", ["userId", "podcasterId"])
-    .index("by_user_episode", ["userId", "episodeId"])
     .index("by_episode", ["episodeId"]),
 
   conversationMessages: defineTable({

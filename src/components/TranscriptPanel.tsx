@@ -50,6 +50,11 @@ export default function TranscriptPanel({
 
   const cursorRef = useRef<string | null>(null);
   const inFlightRef = useRef(false);
+  // Identifies the episode a request was issued for. A response whose episode
+  // no longer matches is discarded, so switching episodes mid-flight cannot
+  // append the previous episode's lines or clobber the cursor.
+  const requestEpisodeRef = useRef<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLButtonElement | null>(null);
 
@@ -57,6 +62,10 @@ export default function TranscriptPanel({
     if (inFlightRef.current) return;
 
     inFlightRef.current = true;
+    requestEpisodeRef.current = episodeId;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setLoading(true);
 
     const query = new URLSearchParams({ num: String(PAGE_SIZE) });
@@ -65,6 +74,7 @@ export default function TranscriptPanel({
     try {
       const res = await fetch(
         `/api/episodes/${episodeId}/transcript?${query.toString()}`,
+        { signal: controller.signal },
       );
 
       if (!res.ok) {
@@ -80,27 +90,42 @@ export default function TranscriptPanel({
         continueCursor: string;
       };
 
+      // Discard a response for an episode the viewer has already navigated off.
+      if (requestEpisodeRef.current !== episodeId) return;
+
       setLines((prev) => [...prev, ...result.page]);
       cursorRef.current = result.continueCursor;
       setIsDone(result.isDone);
       setError(null);
     } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return;
+      if (requestEpisodeRef.current !== episodeId) return;
       setError(
-        err instanceof Error && err.name !== "AbortError"
-          ? err.message
-          : "Could not load the transcript.",
+        err instanceof Error ? err.message : "Could not load the transcript.",
       );
     } finally {
-      inFlightRef.current = false;
-      setLoading(false);
+      if (requestEpisodeRef.current === episodeId) {
+        inFlightRef.current = false;
+        setLoading(false);
+      }
     }
   }, [episodeId]);
 
   useEffect(() => {
+    // Reset for the new episode, and drop any response still in flight for
+    // the previous one.
+    abortRef.current?.abort();
+    inFlightRef.current = false;
+    requestEpisodeRef.current = episodeId;
     cursorRef.current = null;
     setLines([]);
     setIsDone(false);
+    setError(null);
     void loadMore();
+
+    return () => {
+      abortRef.current?.abort();
+    };
   }, [episodeId, loadMore]);
 
   const lastLoadedEnd = lines.length > 0 ? lines[lines.length - 1].endTime : 0;

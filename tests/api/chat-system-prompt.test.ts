@@ -153,6 +153,42 @@ describe("trimHistory", () => {
     expect(trimmed[0].role).toBe("user");
   });
 
+  /**
+   * Regression: the first implementation returned the input untrimmed whenever
+   * the message count was below keepRecentTurns, because the "recent" slice
+   * swallowed the whole list. A few long turns therefore blew past the budget.
+   */
+  it("respects the budget even when the message count is below keepRecentTurns", () => {
+    const history = [
+      turn("user", 15_000),
+      turn("assistant", 15_000),
+      turn("user", 6_000),
+    ];
+
+    const trimmed = trimHistory(history, 10_000, 12);
+    const total = trimmed.reduce((sum, m) => sum + m.content.length, 0);
+
+    expect(total).toBeLessThanOrEqual(10_000);
+  });
+
+  it("respects the budget for a single oversized turn", () => {
+    const history = [turn("user", 5_000), turn("assistant", 90_000)];
+    const trimmed = trimHistory(history, 1_000, 12);
+
+    // A turn larger than the whole budget still yields the question, so the
+    // model is never left with nothing to answer.
+    expect(trimmed).toHaveLength(1);
+    expect(trimmed[0].role).toBe("user");
+  });
+
+  it("never emits a lone assistant turn", () => {
+    for (const size of [500, 5_000, 50_000]) {
+      const history = [turn("user", size), turn("assistant", size)];
+      const trimmed = trimHistory(history, 10, 12);
+      expect(trimmed[0]?.role).toBe("user");
+    }
+  });
+
   it("respects the character budget", () => {
     const history = Array.from({ length: 40 }, (_, i) =>
       turn(i % 2 === 0 ? "user" : "assistant", 1_000),

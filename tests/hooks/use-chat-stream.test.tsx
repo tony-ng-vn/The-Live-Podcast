@@ -104,6 +104,67 @@ describe("useChatStream", () => {
     expect(secondBody.conversationId).toBe("conv_1");
   });
 
+  /**
+   * Regression: the assistant slot index used to be computed from the render
+   * closure, so two sends within one render window both targeted the same slot
+   * and merged their replies into a single bubble.
+   */
+  it("keeps concurrent sends in separate assistant slots", async () => {
+    let call = 0;
+    fetchMock.mockImplementation(async () => {
+      call += 1;
+      return sseResponse([
+        { type: "conversation", conversationId: `conv_${call}` },
+        { type: "token", content: `R${call}` },
+        { type: "done" },
+      ]);
+    });
+
+    const { result } = renderHook(() => useChatStream());
+
+    await act(async () => {
+      // Deliberately not awaited in sequence: both sends start in the same tick.
+      await Promise.all([
+        result.current.send("first", options),
+        result.current.send("second", options),
+      ]);
+    });
+
+    await waitFor(() => {
+      expect(result.current.messages).toHaveLength(4);
+    });
+
+    const contents = result.current.messages.map((m) => m.content);
+    expect(contents).toEqual(["first", "R1", "second", "R2"]);
+  });
+
+  it("resolves send with the assembled reply", async () => {
+    const { result } = renderHook(() => useChatStream());
+
+    let reply: string | null = null;
+    await act(async () => {
+      reply = await result.current.send("hi", options);
+    });
+
+    // Voice mode depends on this rather than reading a messages snapshot.
+    expect(reply).toBe("hello");
+  });
+
+  it("resolves send with null when the turn fails", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "nope" }), { status: 500 }),
+    );
+
+    const { result } = renderHook(() => useChatStream());
+    let reply: string | null = "unset";
+
+    await act(async () => {
+      reply = await result.current.send("hi", options);
+    });
+
+    expect(reply).toBeNull();
+  });
+
   it("ignores a blank message", async () => {
     const { result } = renderHook(() => useChatStream());
 
