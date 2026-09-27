@@ -47,6 +47,16 @@ The example values are placeholders and will not start the app.
 `npm run dev` checks the Clerk key format and Convex URL before Next.js starts.
 This format check cannot confirm that the services accept your keys or that the Convex deployment is active.
 
+### Connect Clerk to Convex
+
+Enable the Convex integration in both the development and production Clerk instances.
+Set each Convex deployment's `CLERK_FRONTEND_API_URL` to the matching Clerk Frontend API URL shown by that integration.
+For development, use `npx convex env set CLERK_FRONTEND_API_URL <development-url>`.
+For production, use `npx convex env set CLERK_FRONTEND_API_URL <production-url> --prod`.
+Deploy `convex/auth.config.ts` to each deployment after setting its URL.
+The Next.js API routes pass a per-request Clerk token to Convex, and Convex rejects requests without a matching verified identity.
+Do not reuse a Convex HTTP client across signed-in users.
+
 ### Find server errors
 
 The app shows a short retry message to viewers when a service fails.

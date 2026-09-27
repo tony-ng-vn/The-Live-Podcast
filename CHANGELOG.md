@@ -1,3 +1,13 @@
+## v0.4.4
+
+2026-09-27
+
+**Security**
+
+- The database now checks each person's Clerk identity before reading or changing their videos and conversations, including requests made directly to Convex.
+
+---
+
 ## v0.4.3
 
 2026-09-27
