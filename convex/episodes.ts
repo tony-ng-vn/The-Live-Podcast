@@ -256,6 +256,11 @@ export const createEpisodeWithChunks = internalMutation({
         text: v.string(),
         startTime: v.number(),
         endTime: v.number(),
+        segments: v.optional(v.array(v.object({
+          text: v.string(),
+          startTime: v.number(),
+          endTime: v.number(),
+        }))),
       }),
     ),
   },
@@ -280,6 +285,7 @@ export const createEpisodeWithChunks = internalMutation({
         text: chunk.text,
         startTime: chunk.startTime,
         endTime: chunk.endTime,
+        segments: chunk.segments,
       });
     }
 

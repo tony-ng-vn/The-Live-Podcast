@@ -1,3 +1,13 @@
+## v0.3.3
+
+2026-09-27
+
+**Episodes**
+
+- Chat now reads captions only after they finish before the pause point, so a question does not reveal later speech from the same transcript chunk.
+
+---
+
 ## v0.3.2
 
 2026-09-27

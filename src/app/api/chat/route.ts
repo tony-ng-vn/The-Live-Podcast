@@ -152,15 +152,6 @@ export async function POST(request: Request): Promise<Response> {
       console.log(`[Chat:API] First chunk start: ${chunks[0].startTime}s, Last chunk end: ${chunks[chunks.length - 1].endTime}s`);
       console.log(`[Chat:API] Total transcript length: ${fullTranscript.length} characters`);
 
-      const overlapsPausePoint = chunks.some(
-        (chunk) => chunk.startTime <= typedTimestamp && chunk.endTime > typedTimestamp
-      );
-      if (overlapsPausePoint) {
-        console.warn(
-          "[Chat:API] At least one chunk overlaps the pause timestamp, so transcript context may include lines slightly ahead of the paused frame."
-        );
-      }
-
       if (debugFullContext) {
         console.log(
           "[Chat:API] Full transcript chunks:",
@@ -307,4 +298,3 @@ function enqueueSseEvent(
   const encoder = new TextEncoder();
   controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
 }
-

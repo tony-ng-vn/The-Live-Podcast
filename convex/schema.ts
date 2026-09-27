@@ -45,6 +45,11 @@ export default defineSchema({
     text: v.string(),
     startTime: v.number(),
     endTime: v.number(),
+    segments: v.optional(v.array(v.object({
+      text: v.string(),
+      startTime: v.number(),
+      endTime: v.number(),
+    }))),
     embedding: v.optional(v.array(v.float64())),
     embeddingSource: v.optional(v.string()),
   })

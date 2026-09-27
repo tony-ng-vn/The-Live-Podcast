@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
+import { selectTranscriptUpToTimestamp } from "./transcript";
 
 export const getChunksUpToTimestamp = query({
   args: {
@@ -14,12 +15,6 @@ export const getChunksUpToTimestamp = query({
       )
       .collect();
 
-    return chunks
-      .filter((chunk) => chunk.startTime <= args.timestamp)
-      .map((chunk) => ({
-        text: chunk.text,
-        startTime: chunk.startTime,
-        endTime: chunk.endTime,
-      }));
+    return selectTranscriptUpToTimestamp(chunks, args.timestamp);
   },
 });
