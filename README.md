@@ -71,21 +71,15 @@ A longer history will need a separate error storage service before production us
 ### Start the dev stack
 
 ```bash
-# Terminal 1: Convex backend
-npm run convex:dev
-
-# Terminal 2: Transcript service
-npm run transcript:dev
-
-# Terminal 3: Next.js frontend
-npm run dev
+npm run dev:all
 ```
 
-The transcript service requires Python 3.11+. Install its dependencies first:
-
-```bash
-npm run transcript:install
-```
+This command starts Convex, the Python transcript service, and Next.js together.
+It creates a local Python environment and installs transcript dependencies on the first run or when `transcript-service/requirements.txt` changes.
+Python 3.11 or newer must be installed before the first run.
+Press Ctrl+C to stop all three services.
+The command checks Clerk and Convex settings before it starts any service.
+It still needs a working Convex deployment and real Clerk keys.
 
 If you run the transcript service on a different host or port, update
 `TRANSCRIPT_SERVICE_URL` in `.env` before ingesting episodes.

@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.3.0
+2026-09-27
+
+**Startup**
+- One command now starts Convex, the transcript service, and Next.js, and stops them together when one exits or you press Ctrl+C.
+- The first run creates a local Python environment and installs transcript dependencies automatically.
+
+---
+
 ## v0.2.1
 2026-09-27
 
