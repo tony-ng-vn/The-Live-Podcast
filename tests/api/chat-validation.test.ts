@@ -17,6 +17,7 @@ const {
     users: { ensureUser: "users.ensureUser" },
     chat: {
       startConversation: "chat.startConversation",
+      rollbackFailedQuestion: "chat.rollbackFailedQuestion",
       appendAssistantMessage: "chat.appendAssistantMessage",
       listConversationMessages: "chat.listConversationMessages",
     },
@@ -107,7 +108,10 @@ describe("POST /api/chat validation", () => {
           return "user_doc";
         }
         if (ref === apiRefs.chat.startConversation) {
-          return { conversationId: "conv_1" };
+          return { conversationId: "conv_1", messageId: "question_1" };
+        }
+        if (ref === apiRefs.chat.rollbackFailedQuestion) {
+          return null;
         }
         if (ref === apiRefs.chat.appendAssistantMessage) {
           return "msg_1";
@@ -308,6 +312,10 @@ describe("POST /api/chat validation", () => {
       code: "MODEL_RATE_LIMITED",
       error: expect.stringContaining("Model settings"),
       errorId: expect.any(String),
+    });
+    expect(mutationMock).toHaveBeenCalledWith(apiRefs.chat.rollbackFailedQuestion, {
+      conversationId: "conv_1",
+      messageId: "question_1",
     });
   });
 });
