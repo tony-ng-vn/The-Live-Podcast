@@ -23,14 +23,43 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify Convex codegen is up to date
+        run: |
+          npx convex codegen --typecheck disable
+          git diff --exit-code -- convex/_generated
+
       - name: Lint
         run: npm run lint
 
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Test
+        run: npm test
+
       - name: Build
         run: npm run build
 
-      - name: Test
-        run: npm test
+  transcript-service:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install transcript service dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r transcript-service/requirements.txt
+          pip install ruff
+
+      - name: Lint transcript service
+        run: ruff check transcript-service/
+
+      - name: Import check transcript service
+        run: python -c "import sys; sys.path.insert(0, 'transcript-service'); import main; assert main.app"

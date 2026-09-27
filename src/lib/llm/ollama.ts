@@ -1,4 +1,4 @@
-import { LLMProvider, Message, LLMOptions } from "./types";
+import type { LLMProvider, Message, LLMOptions } from "./types";
 
 export class OllamaProvider implements LLMProvider {
   private baseUrl: string;

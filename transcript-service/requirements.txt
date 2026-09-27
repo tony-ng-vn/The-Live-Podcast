@@ -1,3 +1,6 @@
-youtube-transcript-api>=0.6.3
-fastapi>=0.115.0
-uvicorn[standard]>=0.34.0
+# Pinned for reproducible installs. Verified against main.py on Python 3.11.
+# youtube-transcript-api 1.x uses the YouTubeTranscriptApi().fetch()/.list()
+# instance API; do not downgrade to 0.6.x without updating main.py.
+youtube-transcript-api==1.2.4
+fastapi==0.141.1
+uvicorn[standard]==0.54.0

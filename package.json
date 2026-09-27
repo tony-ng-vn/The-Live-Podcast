@@ -1,14 +1,19 @@
 {
-  "name": "tony-podcast",
+  "name": "the-live-podcast",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
+    "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "test": "vitest run --reporter=verbose",
+    "test:watch": "vitest",
+    "verify": "npm run lint && npm run typecheck && npm test && npm run build",
     "convex:dev": "convex dev",
     "convex:codegen": "convex codegen",
     "transcript:dev": "cd transcript-service && uvicorn main:app --host 127.0.0.1 --port 8765 --reload",
@@ -20,8 +25,7 @@
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "sonner": "^2.0.7",
-    "uuid": "^13.0.0"
+    "sonner": "^2.0.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.1",
@@ -31,6 +35,7 @@
     "@types/react-dom": "^19.2.3",
     "eslint": "^9.39.4",
     "eslint-config-next": "16.1.6",
+    "jsdom": "^28.0.0",
     "tailwindcss": "^4.2.1",
     "typescript": "^5.9.3",
     "vitest": "^4.1.0"

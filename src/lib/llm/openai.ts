@@ -1,4 +1,4 @@
-import { LLMProvider, Message, LLMOptions } from "./types";
+import type { LLMProvider, Message, LLMOptions } from "./types";
 
 export class OpenAIProvider implements LLMProvider {
   private apiKey: string;

@@ -1,0 +1,7 @@
+line-length = 100
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "B", "UP", "I"]
+# E501 is handled by the formatter.
+ignore = ["E501"]

@@ -1,4 +1,4 @@
-import { LLMProvider } from "./types";
+import type { LLMProvider } from "./types";
 import { OpenAIProvider } from "./openai";
 import { OllamaProvider } from "./ollama";
 import { OpenRouterProvider } from "./openrouter";
