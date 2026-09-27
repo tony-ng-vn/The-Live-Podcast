@@ -28,7 +28,7 @@ The AI has general knowledge plus the full context of what's been discussed up t
 - **Data layer:** Convex
 - **Auth:** Clerk
 - **LLM:** Provider-agnostic (OpenAI, Ollama, or any OpenAI-compatible API)
-- **Transcript:** Python sidecar service (youtube-transcript-api)
+- **Transcript:** Local Python service (youtube-transcript-api), with SerpApi for cloud hosting
 
 ## Setup
 
@@ -83,6 +83,8 @@ It still needs a working Convex deployment and real Clerk keys.
 
 If you run the transcript service on a different host or port, update
 `TRANSCRIPT_SERVICE_URL` in `.env` before ingesting episodes.
+For cloud hosting, set `TRANSCRIPT_PROVIDER=serpapi` and add `SERPAPI_API_KEY` as a server-side secret.
+See [the transcript provider decision](docs/transcript-provider-decision.md) for the reason and the plan to return to one source.
 
 ## Testing
 
