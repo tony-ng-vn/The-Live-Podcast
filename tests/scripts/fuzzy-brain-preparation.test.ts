@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { preparePackets, verifyImport } from "../../scripts/lib/fuzzy-brain-preparation.mjs";
+import { preparePackets, selectPreparedEntry, verifyImport } from "../../scripts/lib/fuzzy-brain-preparation.mjs";
 
 const sourceId = "f932975f-a0d2-46c2-b97b-58befa4f5f20";
 const receiptId = "21654527-7fc7-44cf-9b89-50fd0d6210c9";
@@ -31,5 +31,13 @@ describe("Fuzzy Brain preparation", () => {
     const verified = { state: "verified", receipt: result, source: { total_messages: 1 } };
     expect(verifyImport(packet, result, verified)).toBe(receiptId);
     expect(() => verifyImport(packet, result, { ...verified, source: { total_messages: 0 } })).toThrow("readback mismatch");
+  });
+
+  it("keeps a preview bound to the owner and registered source", () => {
+    const entry = { packetFile: "/private/packet.json", revision: "revision", messageCount: 1 };
+    const manifest = { ownerId: "tony_user", sourceId, entries: { conv_1: entry } };
+    expect(selectPreparedEntry(manifest, "tony_user", sourceId, "conv_1")).toBe(entry);
+    expect(() => selectPreparedEntry(manifest, "other", sourceId, "conv_1")).toThrow("preview identity mismatch");
+    expect(() => selectPreparedEntry(manifest, "tony_user", "other", "conv_1")).toThrow("preview identity mismatch");
   });
 });
