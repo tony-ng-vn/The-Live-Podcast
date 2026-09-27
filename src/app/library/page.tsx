@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import EpisodeCard from "@/components/EpisodeCard";
+import { readApiError } from "@/lib/api-error";
 
 interface Podcaster {
   name: string;
@@ -42,12 +43,7 @@ export default function LibraryPage() {
           const data = (await res.json()) as Episode[];
           setEpisodes(data);
         } else {
-          const data = (await res.json().catch(() => null)) as {
-            error?: string;
-          } | null;
-          toast.error(
-            data?.error ?? "Failed to load episodes. Please try again.",
-          );
+          toast.error(await readApiError(res));
         }
       } catch {
         toast.error("Failed to load episodes. Please try again.");
