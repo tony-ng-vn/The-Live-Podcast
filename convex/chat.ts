@@ -67,6 +67,12 @@ export const startConversation = mutation({
       if (existing.userId !== args.userId) {
         throw new ConvexError("Conversation does not belong to authenticated user");
       }
+      if (existing.episodeId !== args.episodeId) {
+        throw new ConvexError("Conversation episode mismatch");
+      }
+      if (existing.podcasterId !== args.podcasterId) {
+        throw new ConvexError("Conversation podcaster mismatch");
+      }
     } else {
       const now = Date.now();
       activeConversationId = await ctx.db.insert("conversations", {
