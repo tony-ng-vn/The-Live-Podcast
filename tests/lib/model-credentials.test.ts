@@ -14,10 +14,14 @@ describe("saved model credentials", () => {
     expect(() => decryptModelKey(saved, "user_one", "openai")).toThrow();
   });
 
-  it("rejects edited ciphertext and invalid encryption configuration", () => {
+  it("rejects an edited authentication tag and invalid encryption configuration", () => {
     vi.stubEnv("MODEL_CREDENTIALS_KEY", Buffer.alloc(32, 7).toString("base64"));
     const saved = encryptModelKey("sk-example-secret", "user_one", "openai");
-    expect(() => decryptModelKey(`${saved.slice(0, -1)}x`, "user_one", "openai")).toThrow();
+    const parts = saved.split(":");
+    const tag = Buffer.from(parts[3], "base64url");
+    tag[0] ^= 1;
+    parts[3] = tag.toString("base64url");
+    expect(() => decryptModelKey(parts.join(":"), "user_one", "openai")).toThrow();
 
     vi.stubEnv("MODEL_CREDENTIALS_KEY", "short");
     expect(() => encryptModelKey("sk-example-secret", "user_one", "openai")).toThrow();
