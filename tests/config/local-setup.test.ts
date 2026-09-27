@@ -23,9 +23,19 @@ describe("local setup check", () => {
     expect(
       validateLocalSetup({
         NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: validPublishableKey,
-        CLERK_SECRET_KEY: "sk_test_real-secret-value",
+        CLERK_SECRET_KEY: `sk_test_${"a".repeat(48)}`,
         NEXT_PUBLIC_CONVEX_URL: "https://example.convex.cloud",
       }),
     ).toEqual([]);
+  });
+
+  it("rejects short placeholder-like secret keys", () => {
+    expect(
+      validateLocalSetup({
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: validPublishableKey,
+        CLERK_SECRET_KEY: "sk_test_abc1234567",
+        NEXT_PUBLIC_CONVEX_URL: "https://example.convex.cloud",
+      }),
+    ).toEqual(["CLERK_SECRET_KEY must be a real Clerk secret key."]);
   });
 });
