@@ -26,7 +26,14 @@ type ChatStreamEvent =
   | { type: "conversation"; conversationId: string }
   | { type: "token"; content: string }
   | { type: "done" }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string; code?: string };
+
+const MODEL_RATE_LIMIT_ERROR =
+  "That model is busy or has reached its request limit. Try again later or choose another model in Model settings.";
+
+function isModelRateLimited(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "MODEL_RATE_LIMITED";
+}
 
 export async function POST(request: Request): Promise<Response> {
   const { userId, getToken } = await auth();
@@ -286,7 +293,9 @@ export async function POST(request: Request): Promise<Response> {
           enqueueSseEvent(controller, { type: "done" });
         } catch (error) {
           await recordServerError("chat.stream", error);
-          enqueueSseEvent(controller, { type: "error", message: FRIENDLY_SERVER_ERROR });
+          enqueueSseEvent(controller, isModelRateLimited(error)
+            ? { type: "error", message: MODEL_RATE_LIMIT_ERROR, code: "MODEL_RATE_LIMITED" }
+            : { type: "error", message: FRIENDLY_SERVER_ERROR });
         } finally {
           controller.close();
         }
@@ -303,6 +312,12 @@ export async function POST(request: Request): Promise<Response> {
     });
   } catch (error) {
     const errorId = await recordServerError("chat.response", error);
+    if (isModelRateLimited(error)) {
+      return NextResponse.json(
+        { error: MODEL_RATE_LIMIT_ERROR, code: "MODEL_RATE_LIMITED", errorId },
+        { status: 429 },
+      );
+    }
     return NextResponse.json(
       { error: FRIENDLY_SERVER_ERROR, errorId },
       { status: 503 }
