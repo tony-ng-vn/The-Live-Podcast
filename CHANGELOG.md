@@ -1,3 +1,13 @@
+## v0.4.2
+
+2026-09-27
+
+**Diagnostics**
+
+- Production errors now keep a private, redacted record in Convex with the error ID shown to the viewer.
+
+---
+
 ## v0.4.1
 
 2026-09-27

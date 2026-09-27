@@ -58,15 +58,24 @@ To inspect the latest local records, run:
 tail -n 20 logs/app-errors.jsonl
 ```
 
-On Vercel, the server emits the same record with the `[app-error]` prefix.
-To find production records through the CLI, run:
+In production, the server also saves redacted records in the private Convex `serverErrors` table.
+The web server and Convex deployment must share `ERROR_LOG_INGEST_TOKEN` for this write.
+The table has no public read function.
+To inspect recent production errors through the authenticated Convex CLI, run:
+
+```bash
+npx convex data serverErrors --prod --limit 20
+```
+
+The ID shown to a viewer matches the `id` field in that table.
+Vercel also emits the redacted record with the `[app-error]` prefix.
+If Convex is unavailable, find the fallback record with:
 
 ```bash
 vercel logs --environment production --level error --query '[app-error]' --no-branch
 ```
 
-Vercel's Hobby plan keeps runtime logs for one hour.
-A longer history will need a separate error storage service before production use.
+The app gives the viewer the same retry message even when error storage fails.
 
 ### Start the dev stack
 
