@@ -1,12 +1,13 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
-const isProtectedPageRoute = createRouteMatcher(["/library(.*)", "/watch(.*)"]);
+const isProtectedPageRoute = createRouteMatcher(["/library(.*)", "/watch(.*)", "/settings(.*)"]);
 const isProtectedApiRoute = createRouteMatcher([
   "/api/chat(.*)",
   "/api/chat/end(.*)",
   "/api/episodes(.*)",
   "/api/profiles/build(.*)",
+  "/api/model-settings(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, request) => {
@@ -33,5 +34,7 @@ export const config = {
     "/api/chat/end/:path*",
     "/api/episodes/:path*",
     "/api/profiles/build/:path*",
+    "/settings/:path*",
+    "/api/model-settings/:path*",
   ],
 };
