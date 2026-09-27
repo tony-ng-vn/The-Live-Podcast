@@ -50,6 +50,7 @@ const {
     episodes: {
       ingestEpisode: "episodes.ingestEpisode",
       listEpisodes: "episodes.listEpisodes",
+      getEpisodeDetail: "episodes.getEpisodeDetail",
     },
   },
   mutationMock: vi.fn(),
@@ -74,6 +75,7 @@ vi.mock("@/lib/server-error", () => ({
 }));
 
 import { GET, POST } from "@/app/api/episodes/route";
+import { GET as getEpisodeDetail } from "@/app/api/episodes/[id]/route";
 
 describe("POST /api/episodes validation", () => {
   beforeEach(() => {
@@ -303,5 +305,20 @@ describe("POST /api/episodes validation", () => {
       errorId: "error-test-id",
     });
     expect(recordServerErrorMock).toHaveBeenCalledWith("episodes.list", expect.any(Error));
+  });
+
+  it("does not report a backend failure as a missing episode", async () => {
+    queryMock.mockRejectedValueOnce(new Error("Convex deployment disabled"));
+
+    const res = await getEpisodeDetail(new Request("http://localhost/api/episodes/episode_1"), {
+      params: Promise.resolve({ id: "episode_1" }),
+    });
+
+    expect(res.status).toBe(503);
+    await expect(res.json()).resolves.toEqual({
+      error: "Oops, someone stole the apple. Please try again while I find another one.",
+      errorId: "error-test-id",
+    });
+    expect(recordServerErrorMock).toHaveBeenCalledWith("episodes.detail", expect.any(Error));
   });
 });
