@@ -9,7 +9,6 @@ import { recordServerError } from "@/lib/server-error";
 import {
   getConvexClient,
   api,
-  isConvexConfigurationError,
 } from "@/lib/convex/client";
 import { asConvexId } from "@/lib/convex/ids";
 import { buildMvpSystemPrompt } from "@/lib/chat/system-prompt";
@@ -130,13 +129,8 @@ export async function POST(request: Request): Promise<Response> {
       })
       .catch(() => undefined);
   } catch (error) {
-    if (isConvexConfigurationError(error)) {
-      return NextResponse.json({ error: error.message }, { status: 503 });
-    }
-
-    const message =
-      error instanceof Error ? error.message : "Conversation setup failed";
-    return NextResponse.json({ error: message }, { status: 503 });
+    const errorId = await recordServerError("chat.setup", error);
+    return NextResponse.json({ error: FRIENDLY_SERVER_ERROR, errorId }, { status: 503 });
   }
 
   const typedEpisodeId = asConvexId<"episodes">(episodeId);
@@ -158,10 +152,8 @@ export async function POST(request: Request): Promise<Response> {
     });
     activeConversationId = start.conversationId;
   } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Conversation setup failed";
-    const status = errorMessage.includes("not found") ? 400 : 403;
-    return NextResponse.json({ error: errorMessage }, { status });
+    const errorId = await recordServerError("chat.conversation", error);
+    return NextResponse.json({ error: FRIENDLY_SERVER_ERROR, errorId }, { status: 503 });
   }
 
   let llmMessages: Message[];
