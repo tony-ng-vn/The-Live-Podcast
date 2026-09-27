@@ -15,12 +15,13 @@ interface TimedConversationMessage {
 
 export function selectConversationMessagesUpToTimestamp(
   messages: TimedConversationMessage[],
-  timestamp: number,
+  timestamp?: number,
 ): Array<{ role: "user" | "assistant"; content: string }> {
   return messages
     .filter((message) =>
-      typeof message.timestampInEpisode === "number" &&
-      message.timestampInEpisode <= timestamp,
+      timestamp === undefined ||
+      (typeof message.timestampInEpisode === "number" &&
+        message.timestampInEpisode <= timestamp),
     )
     .map((message) => ({
       role: message.role as "user" | "assistant",
@@ -93,7 +94,7 @@ export const startConversation = mutation({
 export const listConversationMessages = query({
   args: {
     conversationId: v.id("conversations"),
-    timestamp: v.number(),
+    timestamp: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const messages = await ctx.db
@@ -109,7 +110,7 @@ export const appendAssistantMessage = mutation({
   args: {
     conversationId: v.id("conversations"),
     content: v.string(),
-    timestamp: v.number(),
+    timestamp: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const conversation = await ctx.db.get(args.conversationId);
