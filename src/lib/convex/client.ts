@@ -42,14 +42,25 @@ function getConfiguredConvexUrl(): string {
   return convexUrl;
 }
 
-export function getConvexClient(): ConvexHttpClient {
+/**
+ * Returns a Convex client bound to a Clerk session token.
+ *
+ * The token is what populates `ctx.auth` inside Convex functions, so every
+ * request that touches user data must go through this. Without a token the
+ * client's public functions are unauthenticated and will reject the call.
+ */
+export function getConvexClient(authToken?: string | null): ConvexHttpClient {
+  if (authToken) {
+    // Do not cache authenticated clients: a cached client would keep serving
+    // a stale token and silently cross user boundaries.
+    return new ConvexHttpClient(getConfiguredConvexUrl(), { auth: authToken });
+  }
+
   if (cachedClient) {
     return cachedClient;
   }
 
-  const convexUrl = getConfiguredConvexUrl();
-
-  cachedClient = new ConvexHttpClient(convexUrl);
+  cachedClient = new ConvexHttpClient(getConfiguredConvexUrl());
   return cachedClient;
 }
 

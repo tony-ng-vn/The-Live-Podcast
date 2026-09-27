@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { currentUser } from "@clerk/nextjs/server";
+import { api } from "@/lib/convex/client";
 import {
-  getConvexClient,
-  api,
-  isConvexConfigurationError,
-} from "@/lib/convex/client";
+  requireAuthedContext,
+  toErrorResponse,
+} from "@/lib/convex/require-auth";
 import { extractYouTubeId } from "@/lib/youtube";
 import {
   fetchTranscriptSegments,
@@ -22,7 +22,6 @@ export const MAX_EPISODE_URL_LENGTH = 500;
 const TRANSCRIPT_TIMEOUT_MS = 30_000;
 const INGEST_TIMEOUT_MS = 45_000;
 const METADATA_TIMEOUT_MS = 5_000;
-const AUTH_TIMEOUT_MS = 5_000;
 
 export class HttpTimeoutError extends Error {
   constructor(message: string) {
@@ -82,22 +81,13 @@ interface PostRequestBody {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  let userId: string | null;
+  // `requireAuthedContext` builds the Convex client lazily, so calling it up
+  // front still rejects unauthenticated callers without a backend round trip.
+  let authed;
   try {
-    const authResult = await withTimeout(
-      auth(),
-      AUTH_TIMEOUT_MS,
-      "Timed out while checking authentication",
-    );
-    userId = authResult.userId;
+    authed = await requireAuthedContext();
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Authentication check failed";
-    return NextResponse.json({ error: message }, { status: 503 });
-  }
-
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return toErrorResponse(error, "Authentication failed");
   }
 
   let body: PostRequestBody;
@@ -159,15 +149,15 @@ export async function POST(request: Request): Promise<Response> {
   const metadata = await metadataPromise;
 
   try {
-    const convex = getConvexClient();
+    const convex = authed.convex;
+    const clerkUser = await currentUser().catch(() => null);
 
     // Best-effort: a missing profile row should not fail ingestion.
     await withTimeout(
       convex.mutation(api.users.ensureUser, {
-        clerkUserId: userId,
-        email: undefined,
-        name: undefined,
-        imageUrl: undefined,
+        email: clerkUser?.emailAddresses[0]?.emailAddress,
+        name: clerkUser?.fullName ?? undefined,
+        imageUrl: clerkUser?.imageUrl,
       }),
       10_000,
       "Timed out while ensuring user profile",
@@ -175,7 +165,6 @@ export async function POST(request: Request): Promise<Response> {
 
     const episode = await withTimeout(
       convex.action(api.episodes.ingestEpisode, {
-        userId,
         url,
         podcasterName: metadata?.author_name ?? `Podcaster (${videoId})`,
         podcasterChannelUrl:
@@ -191,10 +180,6 @@ export async function POST(request: Request): Promise<Response> {
 
     return NextResponse.json(episode, { status: 201 });
   } catch (error) {
-    if (isConvexConfigurationError(error)) {
-      return NextResponse.json({ error: error.message }, { status: 503 });
-    }
-
     const message =
       error instanceof Error ? error.message : "Failed to ingest episode";
 
@@ -206,34 +191,23 @@ export async function POST(request: Request): Promise<Response> {
     }
     if (
       message.includes("No transcript") ||
-      message.includes("Transcript") ||
-      message.includes("captions")
+      message.includes("too many segments") ||
+      message.includes("segments must have")
     ) {
       return NextResponse.json({ error: message }, { status: 422 });
     }
 
-    return NextResponse.json({ error: message }, { status: 503 });
+    return toErrorResponse(error, message);
   }
 }
 
 export async function GET(): Promise<Response> {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+  let convex;
   try {
-    const convex = getConvexClient();
-    const episodes = await convex.query(api.episodes.listEpisodes, { userId });
-
+    ({ convex } = await requireAuthedContext());
+    const episodes = await convex.query(api.episodes.listEpisodes, {});
     return NextResponse.json(episodes, { status: 200 });
   } catch (error) {
-    if (isConvexConfigurationError(error)) {
-      return NextResponse.json({ error: error.message }, { status: 503 });
-    }
-
-    const message =
-      error instanceof Error ? error.message : "Failed to load episodes";
-    return NextResponse.json({ error: message }, { status: 503 });
+    return toErrorResponse(error, "Failed to load episodes");
   }
 }

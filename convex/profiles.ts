@@ -1,7 +1,6 @@
 import { v } from "convex/values";
 import { chatWithLLM } from "./llm";
 import { internal } from "./_generated/api";
-import type { Doc } from "./_generated/dataModel";
 import {
   action,
   internalAction,
@@ -9,40 +8,69 @@ import {
   internalQuery,
   query,
 } from "./_generated/server";
+import { ForbiddenError, requireUserId } from "./auth";
+import { FORBIDDEN_PODCASTER_MESSAGE } from "../src/lib/convex/auth-messages";
 
-interface EpisodeProfileSource {
-  title: string;
-  sampleText: string;
-}
-
-interface ConversationMessagePayload {
-  role: string;
-  content: string;
-}
+const MAX_PROFILE_SOURCE_EPISODES = 10;
+const PROFILE_SAMPLE_CHUNK_STRIDE = 12;
 
 export const getPodcasterById = query({
   args: {
     podcasterId: v.id("podcasters"),
   },
   handler: async (ctx, args) => {
+    await requireUserId(ctx);
+
     const podcaster = await ctx.db.get(args.podcasterId);
     if (!podcaster) {
       return null;
     }
 
-    return {
-      id: podcaster._id,
-      name: podcaster.name,
-    };
+    return { id: podcaster._id, name: podcaster.name };
   },
 });
 
+/**
+ * Builds a personality profile for a podcaster.
+ *
+ * This invokes a paid LLM, so it is authenticated and the podcaster must have
+ * at least one episode belonging to the caller. It used to be an unauthenticated
+ * public action.
+ */
 export const rebuildPodcasterProfile: ReturnType<typeof action> = action({
   args: {
     podcasterId: v.id("podcasters"),
   },
   handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+
+    const owned = await ctx.runQuery(internal.profiles.hasEpisodeForPodcaster, {
+      userId,
+      podcasterId: args.podcasterId,
+    });
+    if (!owned) {
+      throw new ForbiddenError(FORBIDDEN_PODCASTER_MESSAGE);
+    }
+
     return ctx.runAction(internal.profiles.rebuildPodcasterProfileInternal, args);
+  },
+});
+
+export const hasEpisodeForPodcaster = internalQuery({
+  args: {
+    userId: v.string(),
+    podcasterId: v.id("podcasters"),
+  },
+  handler: async (ctx, args) => {
+    // `by_user_podcaster` is not on episodes, so scan the (already narrowed)
+    // user's rows and match the podcaster in JS. Users have few episodes, so
+    // the filtered set stays small.
+    const episode = await ctx.db
+      .query("episodes")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .filter((q) => q.eq(q.field("podcasterId"), args.podcasterId))
+      .first();
+    return episode !== null;
   },
 });
 
@@ -51,18 +79,18 @@ export const rebuildPodcasterProfileInternal = internalAction({
     podcasterId: v.id("podcasters"),
   },
   handler: async (ctx, args) => {
-    const payload = (await ctx.runQuery(internal.profiles.getProfileSourceData, {
+    const payload = await ctx.runQuery(internal.profiles.getProfileSourceData, {
       podcasterId: args.podcasterId,
-    })) as { episodes: EpisodeProfileSource[] };
+    });
 
     if (payload.episodes.length === 0) {
       return { profile: null };
     }
 
     const transcriptSamples = payload.episodes
-      .map((episode: EpisodeProfileSource) => {
-        return `Episode: "${episode.title}"\n${episode.sampleText}`;
-      })
+      .map(
+        (episode) => `Episode: "${episode.title}"\n${episode.sampleText}`,
+      )
       .join("\n\n---\n\n");
 
     const response = await chatWithLLM([
@@ -118,16 +146,16 @@ export const updateUserPodcasterMemoryFromConversation = internalAction({
     conversationId: v.id("conversations"),
   },
   handler: async (ctx, args) => {
-    const messages = (await ctx.runQuery(internal.profiles.getConversationMessages, {
+    const messages = await ctx.runQuery(internal.profiles.getConversationMessages, {
       conversationId: args.conversationId,
-    })) as ConversationMessagePayload[];
+    });
 
     if (messages.length === 0) {
       return { updated: false };
     }
 
     const conversationText = messages
-      .map((message: ConversationMessagePayload) => `${message.role}: ${message.content}`)
+      .map((message) => `${message.role}: ${message.content}`)
       .join("\n");
 
     const summary = await chatWithLLM([
@@ -159,6 +187,12 @@ export const updateUserPodcasterMemoryFromConversation = internalAction({
   },
 });
 
+/**
+ * Samples spread across each episode rather than the first/last N chunks.
+ *
+ * Taking the 5 most recent chunks sampled only the final ~25 seconds of an
+ * episode, which is a poor basis for a personality profile.
+ */
 export const getProfileSourceData = internalQuery({
   args: {
     podcasterId: v.id("podcasters"),
@@ -168,18 +202,32 @@ export const getProfileSourceData = internalQuery({
       .query("episodes")
       .withIndex("by_podcaster", (q) => q.eq("podcasterId", args.podcasterId))
       .order("desc")
-      .take(10);
+      .take(MAX_PROFILE_SOURCE_EPISODES);
 
     const withSamples = await Promise.all(
-      episodes.map(async (episode: Doc<"episodes">) => {
+      episodes.map(async (episode) => {
         const chunks = await ctx.db
           .query("transcriptChunks")
-          .withIndex("by_episode_start_time", (q) => q.eq("episodeId", episode._id))
-          .take(5);
+          .withIndex("by_episode_start_time", (q) =>
+            q.eq("episodeId", episode._id),
+          )
+          .collect();
+
+        if (chunks.length === 0) {
+          return { title: episode.title, sampleText: "" };
+        }
+
+        const takeEvery = Math.max(
+          1,
+          Math.ceil(chunks.length / (PROFILE_SAMPLE_CHUNK_STRIDE * 3)),
+        );
+        const sampled = chunks.filter(
+          (_, index) => index % takeEvery === 0,
+        );
 
         return {
           title: episode.title,
-          sampleText: chunks.map((chunk) => chunk.text).join(" "),
+          sampleText: sampled.map((chunk) => chunk.text).join(" "),
         };
       }),
     );
@@ -254,12 +302,15 @@ export const upsertUserPodcasterMemory = internalMutation({
     const now = Date.now();
     const existing = await ctx.db
       .query("userPodcasterMemory")
-      .withIndex("by_user_podcaster", (q) => q.eq("userId", args.userId))
-      .filter((q) => q.eq(q.field("podcasterId"), args.podcasterId))
+      .withIndex("by_user_podcaster", (q) =>
+        q.eq("userId", args.userId).eq("podcasterId", args.podcasterId),
+      )
       .first();
 
     if (existing) {
-      const mergedTopics = [...new Set([...existing.keyTopicsDiscussed, ...args.topics])];
+      const mergedTopics = [
+        ...new Set([...existing.keyTopicsDiscussed, ...args.topics]),
+      ];
       await ctx.db.patch(existing._id, {
         summaryOfPastInteractions: `${existing.summaryOfPastInteractions}\n\n${args.summary}`,
         keyTopicsDiscussed: mergedTopics,

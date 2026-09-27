@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { authResult } from "../helpers/auth";
 
 const VALID_URL = "https://youtube.com/watch?v=dQw4w9WgXcQ";
 const VALID_SEGMENTS = [{ text: "hello world", start: 0, duration: 3 }];
@@ -41,7 +42,7 @@ const {
   actionMock,
   queryMock,
 } = vi.hoisted(() => ({
-  authMock: vi.fn<() => Promise<{ userId: string | null }>>(),
+  authMock: vi.fn(),
   currentUserMock: vi.fn(),
   getConvexClientMock: vi.fn(),
   apiRefs: {
@@ -71,7 +72,7 @@ import { POST } from "@/app/api/episodes/route";
 
 describe("POST /api/episodes validation", () => {
   beforeEach(() => {
-    authMock.mockResolvedValue({ userId: "server_user" });
+    authMock.mockResolvedValue(authResult("server_user"));
     currentUserMock.mockResolvedValue(null);
 
     mutationMock.mockReset();
@@ -94,7 +95,7 @@ describe("POST /api/episodes validation", () => {
   });
 
   it("returns 401 when unauthenticated", async () => {
-    authMock.mockResolvedValueOnce({ userId: null });
+    authMock.mockResolvedValueOnce(authResult(null));
 
     const req = new Request("http://localhost/api/episodes", {
       method: "POST",

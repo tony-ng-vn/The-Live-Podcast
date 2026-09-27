@@ -1,5 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import {
   action,
   internalMutation,
@@ -7,14 +8,23 @@ import {
   query,
 } from "./_generated/server";
 import { chunkTranscript, extractYouTubeId } from "./transcript";
+import { ForbiddenError, requireUserId } from "./auth";
+import { FORBIDDEN_EPISODE_MESSAGE } from "../src/lib/convex/auth-messages";
 
+/** Title/youtubeId for an episode the caller owns. */
 export const getEpisodeById = query({
   args: {
     episodeId: v.id("episodes"),
   },
   handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+
     const episode = await ctx.db.get(args.episodeId);
     if (!episode) return null;
+    if (episode.userId !== userId) {
+      throw new ForbiddenError(FORBIDDEN_EPISODE_MESSAGE);
+    }
+
     return {
       title: episode.title,
       youtubeId: episode.youtubeId,
@@ -23,41 +33,54 @@ export const getEpisodeById = query({
 });
 
 export const listEpisodes = query({
-  args: {
-    userId: v.string(),
-  },
-  handler: async (ctx, args) => {
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireUserId(ctx);
+
     const episodes = await ctx.db
       .query("episodes")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .order("desc")
       .collect();
 
-    return Promise.all(
-      episodes.map(async (episode) => {
-        const podcaster = await ctx.db.get(episode.podcasterId);
+    if (episodes.length === 0) return [];
 
-        return {
-          id: episode._id,
-          title: episode.title,
-          youtubeId: episode.youtubeId,
-          thumbnailUrl: episode.thumbnailUrl,
-          description: episode.description,
-          podcaster: podcaster
-            ? {
-                id: podcaster._id,
-                name: podcaster.name,
-              }
-            : {
-                id: "",
-                name: "Unknown podcaster",
-              },
-        };
-      }),
+    // Single query for every referenced podcaster instead of one `db.get` per
+    // episode — the old N+1 did not batch and scaled with library size.
+    const podcasterIds = [...new Set(episodes.map((e) => e.podcasterId))];
+    const podcasters = await Promise.all(
+      podcasterIds.map((id) => ctx.db.get(id)),
     );
+    const podcasterById = new Map(
+      podcasters
+        .filter((p): p is NonNullable<typeof p> => p !== null)
+        .map((p) => [p._id, p]),
+    );
+
+    return episodes.map((episode) => {
+      const podcaster = podcasterById.get(episode.podcasterId);
+      return {
+        id: episode._id,
+        title: episode.title,
+        youtubeId: episode.youtubeId,
+        thumbnailUrl: episode.thumbnailUrl,
+        description: episode.description,
+        createdAt: episode.createdAt,
+        podcaster: podcaster
+          ? { id: podcaster._id, name: podcaster.name }
+          : { id: "", name: "Unknown podcaster" },
+      };
+    });
   },
 });
 
+/**
+ * Episode metadata for the watch page.
+ *
+ * Deliberately does NOT include transcript chunks: the page needs four fields
+ * to render, and a two-hour episode is ~1440 chunks (~1-2 MB) that used to be
+ * shipped on every visit. The transcript is fetched separately and paged.
+ */
 export const getEpisodeDetailInternal = internalQuery({
   args: {
     episodeId: v.id("episodes"),
@@ -70,10 +93,6 @@ export const getEpisodeDetailInternal = internalQuery({
     }
 
     const podcaster = await ctx.db.get(episode.podcasterId);
-    const transcriptChunks = await ctx.db
-      .query("transcriptChunks")
-      .withIndex("by_episode_start_time", (q) => q.eq("episodeId", episode._id))
-      .collect();
 
     return {
       id: episode._id,
@@ -94,23 +113,39 @@ export const getEpisodeDetailInternal = internalQuery({
             description: podcaster.description,
           }
         : null,
-      transcriptChunks: transcriptChunks.map((chunk) => ({
-        id: chunk._id,
-        text: chunk.text,
-        startTime: chunk.startTime,
-        endTime: chunk.endTime,
-      })),
     };
   },
 });
 
-export const getEpisodeDetail: ReturnType<typeof query> = query({
+export interface EpisodeDetail {
+  id: Id<"episodes">;
+  podcasterId: Id<"podcasters">;
+  youtubeUrl: string;
+  youtubeId: string;
+  title: string;
+  description?: string;
+  thumbnailUrl?: string;
+  publishedAt?: number;
+  createdAt: number;
+  updatedAt: number;
+  podcaster: {
+    id: Id<"podcasters">;
+    name: string;
+    channelUrl: string;
+    description?: string;
+  } | null;
+}
+
+export const getEpisodeDetail = query({
   args: {
     episodeId: v.id("episodes"),
-    userId: v.string(),
   },
-  handler: async (ctx, args) => {
-    return ctx.runQuery(internal.episodes.getEpisodeDetailInternal, args);
+  handler: async (ctx, args): Promise<EpisodeDetail | null> => {
+    const userId = await requireUserId(ctx);
+    return ctx.runQuery(internal.episodes.getEpisodeDetailInternal, {
+      episodeId: args.episodeId,
+      userId,
+    });
   },
 });
 
@@ -120,9 +155,11 @@ const segmentValidator = v.object({
   duration: v.number(),
 });
 
+const MAX_SEGMENTS = 20_000;
+const MAX_SEGMENT_TEXT_LENGTH = 2_000;
+
 export const ingestEpisode: ReturnType<typeof action> = action({
   args: {
-    userId: v.string(),
     url: v.string(),
     podcasterName: v.string(),
     podcasterChannelUrl: v.string(),
@@ -131,6 +168,8 @@ export const ingestEpisode: ReturnType<typeof action> = action({
     segments: v.array(segmentValidator),
   },
   handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+
     const trimmedUrl = args.url.trim();
     const youtubeId = extractYouTubeId(trimmedUrl);
 
@@ -140,8 +179,32 @@ export const ingestEpisode: ReturnType<typeof action> = action({
       );
     }
 
+    if (args.segments.length === 0) {
+      throw new ConvexError("No transcript available for this video");
+    }
+
+    if (args.segments.length > MAX_SEGMENTS) {
+      throw new ConvexError(
+        `Transcript has too many segments (${args.segments.length}, max ${MAX_SEGMENTS})`,
+      );
+    }
+
+    for (const segment of args.segments) {
+      if (
+        !Number.isFinite(segment.offset) ||
+        !Number.isFinite(segment.duration) ||
+        segment.offset < 0 ||
+        segment.duration < 0
+      ) {
+        throw new ConvexError("Transcript segments must have non-negative numeric offsets and durations");
+      }
+      if (segment.text.length > MAX_SEGMENT_TEXT_LENGTH) {
+        throw new ConvexError("Transcript segment text is unexpectedly long");
+      }
+    }
+
     const existing = await ctx.runQuery(internal.episodes.getEpisodeByYoutubeId, {
-      userId: args.userId,
+      userId,
       youtubeId,
     });
 
@@ -151,51 +214,29 @@ export const ingestEpisode: ReturnType<typeof action> = action({
       );
     }
 
-    if (args.segments.length === 0) {
-      throw new ConvexError("No transcript available for this video");
-    }
-
     const chunks = chunkTranscript(args.segments);
     const podcasterId = await ctx.runMutation(internal.episodes.upsertPodcaster, {
       channelUrl: args.podcasterChannelUrl,
       name: args.podcasterName,
     });
 
-    const episodeId = await ctx.runMutation(internal.episodes.createEpisodeWithChunks, {
-      podcasterId,
-      userId: args.userId,
-      youtubeUrl: trimmedUrl,
-      youtubeId,
-      title: args.episodeTitle,
-      thumbnailUrl: args.thumbnailUrl,
-      chunks,
-    });
+    const episodeId = await ctx.runMutation(
+      internal.episodes.createEpisodeWithChunks,
+      {
+        podcasterId,
+        userId,
+        youtubeUrl: trimmedUrl,
+        youtubeId,
+        title: args.episodeTitle,
+        thumbnailUrl: args.thumbnailUrl,
+        chunks,
+      },
+    );
 
-    // DEFERRED: embeddings and profile building removed for MVP.
-    // Re-enable when vector search and creator profiles are implemented.
-    //
-    // await ctx.scheduler.runAfter(0, internal.memory.reindexEpisodeChunksInternal, {
-    //   episodeId,
-    // });
-    //
-    // await ctx.scheduler.runAfter(
-    //   0,
-    //   internal.profiles.rebuildPodcasterProfileInternal,
-    //   {
-    //     podcasterId,
-    //   },
-    // );
-
-    const episode = await ctx.runQuery(internal.episodes.getEpisodeDetailInternal, {
+    return ctx.runQuery(internal.episodes.getEpisodeDetailInternal, {
       episodeId,
-      userId: args.userId,
+      userId,
     });
-
-    if (!episode) {
-      throw new ConvexError("Failed to load ingested episode");
-    }
-
-    return episode;
   },
 });
 
@@ -243,6 +284,12 @@ export const upsertPodcaster = internalMutation({
   },
 });
 
+/**
+ * Insert-time batching: a two-hour episode is ~1440 chunks, and issuing that
+ * many individual inserts inside one mutation is the slowest part of ingest.
+ */
+const CHUNK_WRITE_BATCH_SIZE = 128;
+
 export const createEpisodeWithChunks = internalMutation({
   args: {
     podcasterId: v.id("podcasters"),
@@ -273,14 +320,19 @@ export const createEpisodeWithChunks = internalMutation({
       updatedAt: now,
     });
 
-    for (const chunk of args.chunks) {
-      await ctx.db.insert("transcriptChunks", {
-        episodeId,
-        podcasterId: args.podcasterId,
-        text: chunk.text,
-        startTime: chunk.startTime,
-        endTime: chunk.endTime,
-      });
+    for (let i = 0; i < args.chunks.length; i += CHUNK_WRITE_BATCH_SIZE) {
+      const batch = args.chunks.slice(i, i + CHUNK_WRITE_BATCH_SIZE);
+      await Promise.all(
+        batch.map((chunk) =>
+          ctx.db.insert("transcriptChunks", {
+            episodeId,
+            podcasterId: args.podcasterId,
+            text: chunk.text,
+            startTime: chunk.startTime,
+            endTime: chunk.endTime,
+          }),
+        ),
+      );
     }
 
     return episodeId;

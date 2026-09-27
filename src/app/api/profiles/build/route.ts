@@ -1,10 +1,9 @@
-import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { api } from "@/lib/convex/client";
 import {
-  getConvexClient,
-  api,
-  isConvexConfigurationError,
-} from "@/lib/convex/client";
+  requireAuthedContext,
+  statusForConvexError,
+  toErrorResponse,
+} from "@/lib/convex/require-auth";
 import { asConvexId } from "@/lib/convex/ids";
 
 interface BuildRequestBody {
@@ -12,63 +11,64 @@ interface BuildRequestBody {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  let convex;
+  try {
+    ({ convex } = await requireAuthedContext());
+  } catch (error) {
+    return toErrorResponse(error, "Authentication failed");
   }
 
   let body: BuildRequestBody;
   try {
     body = (await request.json()) as BuildRequestBody;
   } catch {
-    return NextResponse.json(
-      { error: "Invalid request body" },
-      { status: 400 }
-    );
+    return Response.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  if (!body) {
-    return NextResponse.json(
-      { error: "Invalid request body" },
-      { status: 400 }
-    );
+  if (!body || typeof body !== "object") {
+    return Response.json({ error: "Invalid request body" }, { status: 400 });
   }
 
   const { podcasterId } = body;
-  if (!podcasterId || typeof podcasterId !== "string" || podcasterId.trim() === "") {
-    return NextResponse.json(
+  if (
+    !podcasterId ||
+    typeof podcasterId !== "string" ||
+    podcasterId.trim() === ""
+  ) {
+    return Response.json(
       { error: "Missing or empty 'podcasterId' field" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   const typedPodcasterId = asConvexId<"podcasters">(podcasterId);
 
   try {
-    const convex = getConvexClient();
     const podcaster = await convex.query(api.profiles.getPodcasterById, {
       podcasterId: typedPodcasterId,
     });
 
     if (!podcaster) {
-      return NextResponse.json(
-        { error: "Podcaster not found" },
-        { status: 404 }
-      );
+      return Response.json({ error: "Podcaster not found" }, { status: 404 });
     }
 
+    // The Convex action re-checks that the caller owns an episode for this
+    // podcaster before spending an LLM call.
     const result = await convex.action(api.profiles.rebuildPodcasterProfile, {
       podcasterId: typedPodcasterId,
     });
 
     if (!result.profile) {
-      return NextResponse.json(
-        { profile: null, message: "No profile data available (no episodes found)" },
-        { status: 200 }
+      return Response.json(
+        {
+          profile: null,
+          message: "No profile data available (no episodes found)",
+        },
+        { status: 200 },
       );
     }
 
-    return NextResponse.json(
+    return Response.json(
       {
         profile: {
           podcasterId,
@@ -78,16 +78,14 @@ export async function POST(request: Request): Promise<Response> {
           speakingStyle: result.profile.speakingStyle,
         },
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
-    if (isConvexConfigurationError(error)) {
-      return NextResponse.json({ error: error.message }, { status: 503 });
-    }
-
-    return NextResponse.json(
-      { error: "AI service is currently unavailable. Could not build profile." },
-      { status: 503 }
-    );
+    const message =
+      error instanceof Error ? error.message : "Could not build profile";
+    const status = statusForConvexError(message);
+    return Response.json({ error: message }, {
+      status: status === 400 ? 503 : status,
+    });
   }
 }
