@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { toast } from "sonner";
 import EpisodeCard from "@/components/EpisodeCard";
-import { readApiError } from "@/lib/api-error";
+import { FRIENDLY_SERVER_ERROR, readApiError } from "@/lib/api-error";
 
 interface Podcaster {
   name: string;
@@ -34,25 +33,29 @@ function SkeletonCard() {
 export default function LibraryPage() {
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
+  const fetchEpisodes = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
+    try {
+      const res = await fetch("/api/episodes");
+      if (!res.ok) {
+        setLoadError(await readApiError(res));
+        return;
+      }
+      const data = (await res.json()) as Episode[];
+      setEpisodes(data);
+    } catch {
+      setLoadError(FRIENDLY_SERVER_ERROR);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    async function fetchEpisodes() {
-      try {
-        const res = await fetch("/api/episodes");
-        if (res.ok) {
-          const data = (await res.json()) as Episode[];
-          setEpisodes(data);
-        } else {
-          toast.error(await readApiError(res));
-        }
-      } catch {
-        toast.error("Failed to load episodes. Please try again.");
-      } finally {
-        setLoading(false);
-      }
-    }
     void fetchEpisodes();
-  }, []);
+  }, [fetchEpisodes]);
 
   // Group episodes by podcaster name
   const grouped = episodes.reduce<Record<string, Episode[]>>((acc, ep) => {
@@ -80,7 +83,20 @@ export default function LibraryPage() {
         </div>
       )}
 
-      {!loading && episodes.length === 0 && (
+      {!loading && loadError && (
+        <div className="mt-20 flex flex-col items-center text-center" role="alert">
+          <p className="text-lg text-zinc-500 dark:text-zinc-400">{loadError}</p>
+          <button
+            type="button"
+            onClick={() => void fetchEpisodes()}
+            className="mt-6 rounded-full bg-zinc-900 px-8 py-3 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 dark:bg-zinc-50 dark:text-zinc-900"
+          >
+            Try again
+          </button>
+        </div>
+      )}
+
+      {!loading && !loadError && episodes.length === 0 && (
         <div className="mt-20 flex flex-col items-center text-center">
           <p className="text-lg text-zinc-500 dark:text-zinc-400">
             No podcasts yet
@@ -97,7 +113,7 @@ export default function LibraryPage() {
         </div>
       )}
 
-      {!loading &&
+      {!loading && !loadError &&
         episodes.length > 0 &&
         podcasterNames.map((name) => (
           <section key={name} className="mt-10">
