@@ -16,7 +16,7 @@ export function validateLocalSetup(env) {
   }
 
   const secretKey = env.CLERK_SECRET_KEY ?? "";
-  if (!secretKey.startsWith("sk_test_") || secretKey.includes("your-key")) {
+  if (!secretKey.startsWith("sk_test_") || secretKey.length < 32 || secretKey.includes("your-key")) {
     errors.push("CLERK_SECRET_KEY must be a real Clerk secret key.");
   }
 
