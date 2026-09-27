@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { selectConversationMessagesUpToTimestamp } from "../../convex/chat";
+import { describe, expect, it, vi } from "vitest";
+import { selectConversationMessagesUpToTimestamp, startConversation } from "../../convex/chat";
 
 describe("chat pause history", () => {
   it("keeps earlier messages and excludes later answers after a rewind", () => {
@@ -25,5 +25,29 @@ describe("chat pause history", () => {
     expect(selectConversationMessagesUpToTimestamp([
       { role: "user", content: "Existing message" },
     ], undefined)).toEqual([{ role: "user", content: "Existing message" }]);
+  });
+
+  it("rejects a conversation from another episode before adding the question", async () => {
+    const insert = vi.fn();
+    const records: Record<string, Record<string, string>> = {
+      episode_1: { podcasterId: "podcaster_1" },
+      podcaster_1: {},
+      conversation_1: {
+        userId: "user_1",
+        episodeId: "episode_2",
+        podcasterId: "podcaster_1",
+      },
+    };
+    const ctx = { db: { get: vi.fn(async (id: string) => records[id]), insert } };
+
+    await expect(startConversation._handler(ctx as never, {
+      userId: "user_1",
+      episodeId: "episode_1" as never,
+      podcasterId: "podcaster_1" as never,
+      conversationId: "conversation_1" as never,
+      timestamp: 30,
+      message: "What did they say?",
+    })).rejects.toThrow("Conversation episode mismatch");
+    expect(insert).not.toHaveBeenCalled();
   });
 });
