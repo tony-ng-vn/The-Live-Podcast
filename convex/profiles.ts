@@ -216,6 +216,7 @@ export const getProfileSourceData = internalQuery({
     const withSamples = await Promise.all(
       episodes.map(async (episode) => {
         const reservoir: string[] = [];
+        // 0-based index of the current chunk across the whole episode.
         let seen = 0;
 
         for await (const chunk of ctx.db
@@ -225,14 +226,16 @@ export const getProfileSourceData = internalQuery({
           )) {
           if (reservoir.length < PROFILE_SAMPLE_TARGET) {
             reservoir.push(chunk.text);
-            continue;
-          }
-
-          // Replace an existing sample with probability target/seen. The
-          // draw is deterministic so repeated runs sample consistently.
-          const j = deterministicBelow(seen, PROFILE_SAMPLE_TARGET);
-          if (j < PROFILE_SAMPLE_TARGET) {
-            reservoir[j] = chunk.text;
+          } else {
+            // Algorithm R: draw j uniformly from [0, seen], and replace slot j
+            // when j is inside the reservoir. Drawing from [0, seen] (not
+            // [0, K]) is what makes the sample uniform over the episode —
+            // drawing from the narrower range silently biases the sample
+            // toward the final chunks.
+            const j = deterministicBelow(seen, seen + 1);
+            if (j < PROFILE_SAMPLE_TARGET) {
+              reservoir[j] = chunk.text;
+            }
           }
           seen += 1;
         }

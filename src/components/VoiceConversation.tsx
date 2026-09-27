@@ -181,15 +181,17 @@ export default function VoiceConversation({
   }, [active]);
 
   const toggleMute = useCallback(() => {
-    setMuted((prev) => {
-      const next = !prev;
-      if (next) {
-        recognitionRef.current?.abort();
-        recognitionRef.current = null;
-        setVoiceState((state) => (state === "listening" ? "idle" : state));
-      }
-      return next;
-    });
+    // Compute the next value outside the updater so the abort/state work is not
+    // inside a reducer, which React may invoke more than once.
+    const next = !mutedRef.current;
+    mutedRef.current = next;
+    setMuted(next);
+
+    if (next) {
+      recognitionRef.current?.abort();
+      recognitionRef.current = null;
+      setVoiceState((state) => (state === "listening" ? "idle" : state));
+    }
   }, []);
 
   const activate = useCallback(() => {

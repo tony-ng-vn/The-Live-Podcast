@@ -241,6 +241,19 @@ export async function POST(request: Request): Promise<Response> {
 
         send({ type: "done" });
       } catch (error) {
+        // The provider request carries `providerAbort.signal`, so an aborted
+        // read surfaces here rather than at the guard above. Persist whatever
+        // arrived first: dropping it would leave the user's question in the
+        // history with no answer, a shape that cannot otherwise occur.
+        if (fullContent.length > 0) {
+          await convex
+            .mutation(api.chat.appendAssistantMessage, {
+              conversationId: activeConversationId,
+              content: fullContent,
+            })
+            .catch(() => undefined);
+        }
+
         if (providerAbort.signal.aborted) return;
 
         const message =

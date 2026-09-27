@@ -93,7 +93,7 @@ If you run the transcript service on a different host or port, update
 
 ```bash
 npm run verify         # lint + typecheck + test + build
-npm test               # vitest (136 tests)
+npm test               # vitest (143 tests)
 npm run typecheck      # tsc over src/, convex/, tests/
 npm run lint           # eslint, fails on warnings
 npm run build          # production build

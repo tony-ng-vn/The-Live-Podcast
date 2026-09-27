@@ -75,6 +75,15 @@ export async function* iterateLines(
         yield line;
       }
     }
+
+    // Flush the decoder: a multi-byte character can straddle the final chunk
+    // boundary and would otherwise be dropped.
+    buffer += decoder.decode();
+
+    // A last frame with no trailing newline is still a frame.
+    if (buffer.length > 0) {
+      yield buffer;
+    }
   } finally {
     // Releasing the lock lets an aborted request tear the connection down.
     try {

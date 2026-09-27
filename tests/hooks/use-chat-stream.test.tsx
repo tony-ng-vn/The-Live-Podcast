@@ -43,7 +43,8 @@ describe("useChatStream", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    fetchMock = vi.fn().mockResolvedValue(
+    // A Response body can only be read once, so build a fresh one per call.
+    fetchMock = vi.fn().mockImplementation(async () =>
       sseResponse([
         { type: "conversation", conversationId: "conv_1" },
         { type: "token", content: "he" },
@@ -138,6 +139,125 @@ describe("useChatStream", () => {
     expect(contents).toEqual(["first", "R1", "second", "R2"]);
   });
 
+  /**
+   * Regression: the append index was derived from React state, but `setStreaming`
+   * parks a render lane so later `setMessages` updaters are deferred. Three sends
+   * in one tick therefore collapsed into two bubbles with the tail merged.
+   */
+  it("keeps three concurrent sends in three separate assistant slots", async () => {
+    let call = 0;
+    fetchMock.mockImplementation(async () => {
+      call += 1;
+      return sseResponse([
+        { type: "conversation", conversationId: `conv_${call}` },
+        { type: "token", content: `R${call}` },
+        { type: "done" },
+      ]);
+    });
+
+    const { result } = renderHook(() => useChatStream());
+
+    await act(async () => {
+      await Promise.all([
+        result.current.send("one", options),
+        result.current.send("two", options),
+        result.current.send("three", options),
+      ]);
+    });
+
+    await waitFor(() => {
+      expect(result.current.messages).toHaveLength(6);
+    });
+
+    expect(result.current.messages.map((m) => m.content)).toEqual([
+      "one",
+      "R1",
+      "two",
+      "R2",
+      "three",
+      "R3",
+    ]);
+  });
+
+  /**
+   * Regression: a turn that was in flight when the viewer hit Resume belonged to
+   * a conversation that no longer exists. A role check cannot catch this because
+   * the target slot is legitimately an assistant turn in both conversations.
+   */
+  it("does not bleed an aborted turn into a conversation created after a reset", async () => {
+    let releaseFirst: (() => void) | undefined;
+
+    fetchMock.mockImplementationOnce(async () => {
+      // Hold the first request open so the reset lands mid-turn.
+      await new Promise<void>((resolve) => {
+        releaseFirst = resolve;
+      });
+      return sseResponse([
+        { type: "conversation", conversationId: "conv_old" },
+        { type: "token", content: "STALE" },
+        { type: "done" },
+      ]);
+    });
+
+    const { result } = renderHook(() => useChatStream());
+
+    await act(async () => {
+      void result.current.send("one", options);
+      // Let the fetch start before resetting.
+      await Promise.resolve();
+    });
+
+    act(() => {
+      result.current.reset();
+    });
+
+    fetchMock.mockImplementationOnce(async () =>
+      sseResponse([
+        { type: "conversation", conversationId: "conv_new" },
+        { type: "token", content: "FRESH" },
+        { type: "done" },
+      ]),
+    );
+
+    await act(async () => {
+      await result.current.send("two", options);
+    });
+
+    // Now let the stale request finish; it must not touch the transcript.
+    await act(async () => {
+      releaseFirst?.();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    await waitFor(() => {
+      expect(result.current.messages.map((m) => m.content)).toEqual([
+        "two",
+        "FRESH",
+      ]);
+    });
+  });
+
+  it("resets the append position so a post-reset send starts at slot 0", async () => {
+    const { result } = renderHook(() => useChatStream());
+
+    await act(async () => {
+      await result.current.send("first", options);
+    });
+    act(() => {
+      result.current.reset();
+    });
+    await act(async () => {
+      await result.current.send("second", options);
+    });
+
+    await waitFor(() => {
+      expect(result.current.messages.map((m) => m.content)).toEqual([
+        "second",
+        "hello",
+      ]);
+    });
+  });
+
   it("resolves send with the assembled reply", async () => {
     const { result } = renderHook(() => useChatStream());
 
@@ -194,7 +314,7 @@ describe("useChatStream", () => {
   });
 
   it("surfaces a mid-stream error frame", async () => {
-    fetchMock.mockResolvedValueOnce(
+    fetchMock.mockImplementationOnce(async () =>
       sseResponse([
         { type: "conversation", conversationId: "conv_1" },
         { type: "token", content: "partial" },
@@ -229,7 +349,7 @@ describe("useChatStream", () => {
       expect(result.current.messages[1]?.error).toBe(true);
     });
 
-    fetchMock.mockResolvedValueOnce(
+    fetchMock.mockImplementationOnce(async () =>
       sseResponse([
         { type: "conversation", conversationId: "conv_1" },
         { type: "token", content: "recovered" },

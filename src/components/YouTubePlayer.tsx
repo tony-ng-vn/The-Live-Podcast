@@ -122,6 +122,11 @@ const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>(
     useEffect(() => {
       return () => {
         destroyPlayer();
+        // Required on a `videoId` change: without it `ready` stays true from
+        // the previous player, so play()/getCurrentTime() would be issued
+        // against an unready instance and silently do nothing. React ignores
+        // this when the component is unmounting.
+        setReady(false);
       };
     }, [destroyPlayer, videoId]);
 

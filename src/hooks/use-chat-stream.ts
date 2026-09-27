@@ -41,14 +41,22 @@ export interface UseChatStreamResult {
  * and started a brand-new server-side conversation. Both surfaces now share one
  * history and one conversation id.
  *
- * Two invariants matter here and are easy to break:
+ * Three invariants matter here and are all easy to break:
  *
- *  1. `messagesRef` mirrors `messages` synchronously. Callers that need the
- *     index of the pending assistant turn must read the ref, not the render
- *     closure — two `send` calls in one render window would otherwise compute
- *     the same index and write both replies into the same bubble.
+ *  1. `nextIndexRef` is the authoritative append position, maintained
+ *     synchronously by `send` and `reset`. It cannot be derived from React
+ *     state: `streamResponse` calls `setStreaming`, which parks a render lane,
+ *     and React then defers subsequent `setMessages` updaters to the render
+ *     phase. A ref mirroring `messages` therefore goes stale for every
+ *     `send` after the first in a given tick, and two sends would write both
+ *     replies into the same bubble.
  *
- *  2. `send` resolves with the assembled reply rather than expecting the caller
+ *  2. `epochRef` increments on `reset`. A stream that was in flight when the
+ *     viewer hit Resume belongs to a conversation that no longer exists, so it
+ *     must not write into the new one — a role check cannot catch that, since
+ *     the slot is legitimately an assistant turn in both conversations.
+ *
+ *  3. `send` resolves with the assembled reply rather than expecting the caller
  *     to find it in `messages`. Callers that run from a long-lived callback
  *     (voice mode's synthesis handler) would otherwise read a stale snapshot.
  *
@@ -63,6 +71,10 @@ export function useChatStream(): UseChatStreamResult {
   const abortRef = useRef<AbortController | null>(null);
   const conversationIdRef = useRef<string | null>(null);
   const messagesRef = useRef<ChatTurn[]>([]);
+  // Authoritative next append position. See invariant 1 above.
+  const nextIndexRef = useRef(0);
+  // Bumped on reset; see invariant 2 above.
+  const epochRef = useRef(0);
 
   useEffect(() => {
     return () => {
@@ -71,8 +83,9 @@ export function useChatStream(): UseChatStreamResult {
   }, []);
 
   /**
-   * Applies a state update and keeps the mirror ref in step within the same
-   * tick, so a caller can immediately read the post-update list.
+   * Applies a state update and keeps the read-only mirror in step. The mirror
+   * exists for `retry` lookups, which are always user-triggered after a render;
+   * append positions come from `nextIndexRef` instead.
    */
   const updateMessages = useCallback(
     (updater: (prev: ChatTurn[]) => ChatTurn[]): void => {
@@ -94,6 +107,9 @@ export function useChatStream(): UseChatStreamResult {
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
+
+      // Captured so a reset mid-stream can invalidate this turn's writes.
+      const epoch = epochRef.current;
 
       setStreaming(true);
 
@@ -167,6 +183,7 @@ export function useChatStream(): UseChatStreamResult {
             if (parsed.type === "token") {
               fullContent += parsed.content;
               options.onToken?.(fullContent);
+              if (epoch !== epochRef.current) return null;
               const index = assistantIndex;
               updateMessages((prev) => {
                 const updated = [...prev];
@@ -187,6 +204,8 @@ export function useChatStream(): UseChatStreamResult {
           }
         }
 
+        if (epoch !== epochRef.current) return null;
+
         updateMessages((prev) => {
           const updated = [...prev];
           const msg = updated[assistantIndex];
@@ -200,6 +219,8 @@ export function useChatStream(): UseChatStreamResult {
       } catch (error) {
         // An abort is a deliberate user action, not a failure to surface.
         if (controller.signal.aborted) return null;
+        // Same for a turn whose conversation was reset out from under it.
+        if (epoch !== epochRef.current) return null;
 
         const message =
           error instanceof Error
@@ -222,9 +243,12 @@ export function useChatStream(): UseChatStreamResult {
       const trimmed = text.trim();
       if (!trimmed) return null;
 
-      // Read the mirror ref, not the render closure: two sends within one
-      // render window must land on different assistant slots.
-      const assistantIndex = messagesRef.current.length + 1;
+      // Claim the slot synchronously. Reading React state here would race with
+      // a deferred updater and hand two sends the same slot.
+      // `nextIndexRef` counts messages already claimed, and this turn claims
+      // two (user, then assistant), so the assistant lands at +1.
+      const assistantIndex = nextIndexRef.current + 1;
+      nextIndexRef.current += 2;
 
       updateMessages((prev) => [
         ...prev,
@@ -259,10 +283,14 @@ export function useChatStream(): UseChatStreamResult {
   );
 
   const reset = useCallback(() => {
+    // Invalidate any in-flight turn before clearing, so it cannot write into
+    // the fresh transcript.
+    epochRef.current += 1;
     abortRef.current?.abort();
     abortRef.current = null;
     conversationIdRef.current = null;
     messagesRef.current = [];
+    nextIndexRef.current = 0;
     setConversationId(null);
     setMessages([]);
     setStreaming(false);
