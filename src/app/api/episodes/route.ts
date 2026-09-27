@@ -33,6 +33,12 @@ interface TranscriptServiceResponse {
   segments: TranscriptSegment[];
 }
 
+interface SerpApiTranscriptResponse {
+  search_metadata?: { status?: string };
+  error?: string;
+  transcript?: Array<{ start_ms?: number; end_ms?: number; snippet?: string }>;
+}
+
 interface YouTubeOEmbedResponse {
   title: string;
   author_name: string;
@@ -62,6 +68,10 @@ async function withTimeout<T>(
 async function fetchTranscriptSegments(
   videoId: string,
 ): Promise<Array<{ text: string; offset: number; duration: number }>> {
+  if (process.env.TRANSCRIPT_PROVIDER === "serpapi") {
+    return fetchSerpApiTranscriptSegments(videoId);
+  }
+
   const serviceUrl =
     process.env.TRANSCRIPT_SERVICE_URL ?? "http://127.0.0.1:8765";
 
@@ -109,6 +119,57 @@ async function fetchTranscriptSegments(
     offset: s.start,
     duration: s.duration,
   }));
+}
+
+async function fetchSerpApiTranscriptSegments(
+  videoId: string,
+): Promise<Array<{ text: string; offset: number; duration: number }>> {
+  const apiKey = process.env.SERPAPI_API_KEY;
+  if (!apiKey) {
+    throw new TranscriptServiceError("SerpApi transcript key is not configured", 503);
+  }
+
+  const url = new URL("https://serpapi.com/search.json");
+  url.searchParams.set("engine", "youtube_video_transcript");
+  url.searchParams.set("v", videoId);
+  url.searchParams.set("api_key", apiKey);
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30_000);
+  let response: Response;
+  try {
+    response = await fetch(url, { signal: controller.signal });
+  } catch (error) {
+    const timeout = error instanceof Error && error.name === "AbortError";
+    throw new TranscriptServiceError(
+      timeout ? `SerpApi transcript request timed out for ${videoId}` : `SerpApi transcript request failed for ${videoId}`,
+      503,
+    );
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (!response.ok) {
+    throw new TranscriptServiceError(`SerpApi transcript request returned HTTP ${response.status} for ${videoId}`, 503);
+  }
+
+  const data = (await response.json()) as SerpApiTranscriptResponse;
+  if (data.error || data.search_metadata?.status !== "Success") {
+    throw new TranscriptServiceError(`SerpApi transcript error for ${videoId}: ${data.error ?? data.search_metadata?.status ?? "unknown status"}`, 503);
+  }
+  if (!Array.isArray(data.transcript) || data.transcript.length === 0) {
+    throw new TranscriptServiceError(`No transcript segments returned for video (${videoId})`, 422);
+  }
+
+  return data.transcript.map((segment) => {
+    const { start_ms: start, end_ms: end, snippet } = segment;
+    if (typeof start !== "number" || typeof end !== "number" ||
+        !Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start ||
+        typeof snippet !== "string" || !snippet.trim()) {
+      throw new TranscriptServiceError(`Invalid SerpApi caption timing for video ${videoId}`, 503);
+    }
+    return { text: snippet, offset: start / 1000, duration: (end - start) / 1000 };
+  });
 }
 
 async function fetchYouTubeMetadata(videoId: string): Promise<YouTubeOEmbedResponse | null> {
@@ -181,9 +242,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  // Fetch transcript here in the Next.js route so we can reach the local
-  // Python service (127.0.0.1:8765). Convex action runtimes are sandboxed
-  // and cannot initiate connections to localhost.
+  // Fetch before Convex ingestion so the same timed segments work locally and in production.
   let segments: Array<{ text: string; offset: number; duration: number }>;
   const metadata = await fetchYouTubeMetadata(videoId);
   try {

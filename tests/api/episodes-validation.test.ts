@@ -284,7 +284,7 @@ describe("POST /api/episodes validation", () => {
     expect(String(transcriptCall?.[0])).toContain("engine=youtube_video_transcript");
     expect(String(transcriptCall?.[0])).toContain("v=dQw4w9WgXcQ");
     expect(String(transcriptCall?.[0])).toContain("api_key=test-key");
-    expect(transcriptCall?.[1]?.headers).not.toHaveProperty("X-Transcript-Token");
+    expect(transcriptCall?.[1]?.headers ?? {}).not.toHaveProperty("X-Transcript-Token");
   });
 
   it("records SerpApi failures without showing the provider error to the user", async () => {
