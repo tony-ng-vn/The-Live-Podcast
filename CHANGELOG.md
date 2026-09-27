@@ -1,3 +1,13 @@
+## v0.4.1
+
+2026-09-27
+
+**Episodes**
+
+- Chat now leaves out answers from later pause points after a rewind and rejects conversation IDs from another video.
+
+---
+
 ## v0.4.0
 
 2026-09-27

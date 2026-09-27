@@ -7,6 +7,28 @@ import {
   query,
 } from "./_generated/server";
 
+interface TimedConversationMessage {
+  role: string;
+  content: string;
+  timestampInEpisode?: number;
+}
+
+export function selectConversationMessagesUpToTimestamp(
+  messages: TimedConversationMessage[],
+  timestamp?: number,
+): Array<{ role: "user" | "assistant"; content: string }> {
+  return messages
+    .filter((message) =>
+      timestamp === undefined ||
+      (typeof message.timestampInEpisode === "number" &&
+        message.timestampInEpisode <= timestamp),
+    )
+    .map((message) => ({
+      role: message.role as "user" | "assistant",
+      content: message.content,
+    }));
+}
+
 export const startConversation = mutation({
   args: {
     userId: v.string(),
@@ -45,6 +67,12 @@ export const startConversation = mutation({
       if (existing.userId !== args.userId) {
         throw new ConvexError("Conversation does not belong to authenticated user");
       }
+      if (existing.episodeId !== args.episodeId) {
+        throw new ConvexError("Conversation episode mismatch");
+      }
+      if (existing.podcasterId !== args.podcasterId) {
+        throw new ConvexError("Conversation podcaster mismatch");
+      }
     } else {
       const now = Date.now();
       activeConversationId = await ctx.db.insert("conversations", {
@@ -61,6 +89,7 @@ export const startConversation = mutation({
       conversationId: activeConversationId,
       role: "user",
       content: trimmedMessage,
+      timestampInEpisode: args.timestamp,
       createdAt: Date.now(),
     });
 
@@ -71,6 +100,7 @@ export const startConversation = mutation({
 export const listConversationMessages = query({
   args: {
     conversationId: v.id("conversations"),
+    timestamp: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const messages = await ctx.db
@@ -78,10 +108,7 @@ export const listConversationMessages = query({
       .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
       .collect();
 
-    return messages.map((message) => ({
-      role: message.role as "user" | "assistant",
-      content: message.content,
-    }));
+    return selectConversationMessagesUpToTimestamp(messages, args.timestamp);
   },
 });
 
@@ -89,6 +116,7 @@ export const appendAssistantMessage = mutation({
   args: {
     conversationId: v.id("conversations"),
     content: v.string(),
+    timestamp: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const conversation = await ctx.db.get(args.conversationId);
@@ -100,6 +128,7 @@ export const appendAssistantMessage = mutation({
       conversationId: args.conversationId,
       role: "assistant",
       content: args.content,
+      timestampInEpisode: args.timestamp,
       createdAt: Date.now(),
     });
   },

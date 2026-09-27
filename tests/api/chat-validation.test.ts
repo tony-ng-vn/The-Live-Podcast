@@ -213,6 +213,25 @@ describe("POST /api/chat validation", () => {
     expect(streamMock).toHaveBeenCalledWith(expect.any(Array), { model: "anthropic/claude-sonnet-4" });
   });
 
+  it("passes the pause point when reading and saving conversation messages", async () => {
+    const res = await POST(new Request("http://localhost/api/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        episodeId: "episode_1", podcasterId: "podcaster_1", timestamp: 30,
+        message: "Explain this",
+      }),
+    }));
+
+    expect(res.status).toBe(200);
+    await drainStream(res);
+    expect(queryMock).toHaveBeenCalledWith(apiRefs.chat.listConversationMessages, {
+      conversationId: "conv_1", timestamp: 30,
+    });
+    expect(mutationMock).toHaveBeenCalledWith(apiRefs.chat.appendAssistantMessage, {
+      conversationId: "conv_1", content: "hello", timestamp: 30,
+    });
+  });
+
   it("asks for a saved key before creating a conversation", async () => {
     savedSettingsMock.mockReturnValue({
       keys: {},
