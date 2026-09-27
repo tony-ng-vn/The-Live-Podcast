@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.2.1
+2026-09-27
+
+**Startup**
+- Local startup now names invalid Clerk and Convex settings before opening a broken app.
+
+**Episodes**
+- Adding a video now shows the server's error so setup and transcript failures are easier to diagnose.
+
+**Library**
+- Library failures now show the server's error instead of a generic message.
+
+---
+
 ## [0.2.0] - 2026-04-12
 
 ### Changed

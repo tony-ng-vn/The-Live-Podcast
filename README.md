@@ -36,10 +36,14 @@ cp .env.example .env
 ```
 
 Fill in your `.env` with:
-- Convex deployment URL (`NEXT_PUBLIC_CONVEX_URL`)
-- Clerk keys (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`)
+- A working Convex development deployment URL (`NEXT_PUBLIC_CONVEX_URL`)
+- Real Clerk development keys (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`)
 - LLM provider config (`LLM_PROVIDER`, API keys for your chosen provider)
 - Transcript service URL (`TRANSCRIPT_SERVICE_URL`, defaults to `http://127.0.0.1:8765`)
+
+The example values are placeholders and will not start the app.
+`npm run dev` checks the Clerk key format and Convex URL before Next.js starts.
+This format check cannot confirm that the services accept your keys or that the Convex deployment is active.
 
 ### Start the dev stack
 
