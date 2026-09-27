@@ -65,7 +65,7 @@ vi.mock("@clerk/nextjs/server", () => ({
 }));
 
 vi.mock("@/lib/convex/client", () => ({
-  getConvexClient: getConvexClientMock,
+  getAuthenticatedConvexClient: getConvexClientMock,
   api: apiRefs,
   isConvexConfigurationError: () => false,
 }));

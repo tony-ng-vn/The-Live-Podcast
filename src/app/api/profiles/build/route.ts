@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import {
-  getConvexClient,
+  getAuthenticatedConvexClient,
   api,
   isConvexConfigurationError,
 } from "@/lib/convex/client";
@@ -12,7 +12,7 @@ interface BuildRequestBody {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const { userId } = await auth();
+  const { userId, getToken } = await auth();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -45,9 +45,10 @@ export async function POST(request: Request): Promise<Response> {
   const typedPodcasterId = asConvexId<"podcasters">(podcasterId);
 
   try {
-    const convex = getConvexClient();
+    const convex = await getAuthenticatedConvexClient(getToken);
     const podcaster = await convex.query(api.profiles.getPodcasterById, {
       podcasterId: typedPodcasterId,
+      userId,
     });
 
     if (!podcaster) {
@@ -59,6 +60,7 @@ export async function POST(request: Request): Promise<Response> {
 
     const result = await convex.action(api.profiles.rebuildPodcasterProfile, {
       podcasterId: typedPodcasterId,
+      userId,
     });
 
     if (!result.profile) {

@@ -7,7 +7,7 @@ import { readSavedModelSettings } from "@/lib/model-settings";
 import { FRIENDLY_SERVER_ERROR } from "@/lib/api-error";
 import { recordServerError } from "@/lib/server-error";
 import {
-  getConvexClient,
+  getAuthenticatedConvexClient,
   api,
 } from "@/lib/convex/client";
 import { asConvexId } from "@/lib/convex/ids";
@@ -29,7 +29,7 @@ type ChatStreamEvent =
   | { type: "error"; message: string };
 
 export async function POST(request: Request): Promise<Response> {
-  const { userId } = await auth();
+  const { userId, getToken } = await auth();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -119,7 +119,7 @@ export async function POST(request: Request): Promise<Response> {
 
   let convex;
   try {
-    convex = getConvexClient();
+    convex = await getAuthenticatedConvexClient(getToken);
     await convex
       .mutation(api.users.ensureUser, {
         clerkUserId: userId,

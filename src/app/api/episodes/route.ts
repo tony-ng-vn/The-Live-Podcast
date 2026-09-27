@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import {
-  getConvexClient,
+  getAuthenticatedConvexClient,
   api,
 } from "@/lib/convex/client";
 import { extractYouTubeId } from "@/lib/youtube";
@@ -199,16 +199,17 @@ interface PostRequestBody {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  let userId: string | null;
+  let clerkAuth: Awaited<ReturnType<typeof auth>>;
   try {
-    ({ userId } = await withTimeout(
+    clerkAuth = await withTimeout(
       auth(),
       5_000,
       "Timed out while checking authentication",
-    ));
+    );
   } catch (error) {
     return serviceFailure("episodes.auth", error);
   }
+  const { userId, getToken } = clerkAuth;
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -259,7 +260,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const convex = getConvexClient();
+    const convex = await getAuthenticatedConvexClient(getToken);
     await withTimeout(
       convex.mutation(api.users.ensureUser, {
         clerkUserId: userId,
@@ -314,18 +315,19 @@ export async function POST(request: Request): Promise<Response> {
 }
 
 export async function GET(): Promise<Response> {
-  let userId: string | null;
+  let clerkAuth: Awaited<ReturnType<typeof auth>>;
   try {
-    ({ userId } = await auth());
+    clerkAuth = await auth();
   } catch (error) {
     return serviceFailure("episodes.auth", error);
   }
+  const { userId, getToken } = clerkAuth;
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const convex = getConvexClient();
+    const convex = await getAuthenticatedConvexClient(getToken);
     const episodes = await convex.query(api.episodes.listEpisodes, { userId });
 
     return NextResponse.json(episodes, { status: 200 });
