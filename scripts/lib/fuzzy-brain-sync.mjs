@@ -10,6 +10,15 @@ function isoTime(value) {
   return date.toISOString();
 }
 
+function videoTime(seconds) {
+  if (seconds === undefined || seconds === null) return null;
+  if (!Number.isFinite(seconds) || seconds < 0) throw new Error("invalid video pause point");
+  const total = Math.floor(seconds);
+  const minutes = Math.floor(total / 60);
+  const formatted = `${String(minutes % 60).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+  return minutes >= 60 ? `${Math.floor(minutes / 60)}:${formatted}` : formatted;
+}
+
 export function buildTransfer({ sourceId, ownerId, conversation, episode, messages, previousReceiptId = null }) {
   if (!sourceId || !ownerId || !conversation?._id || !episode?._id) {
     throw new Error("missing sync identity");
@@ -33,10 +42,12 @@ export function buildTransfer({ sourceId, ownerId, conversation, episode, messag
         typeof message.content !== "string" || !message.content.trim()) {
       throw new Error("invalid saved message");
     }
+    const speaker = message.role === "user" ? "viewer" : "The Live Podcast";
+    const pause = videoTime(message.timestampInEpisode);
     return {
       id: message._id,
       role: message.role,
-      speaker: message.role === "user" ? "viewer" : "The Live Podcast",
+      speaker: pause ? `${speaker} at video ${pause}` : speaker,
       text: message.content,
       at: isoTime(message.createdAt),
       fidelity: "verbatim",
