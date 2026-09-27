@@ -3,15 +3,22 @@ import { auth } from "@clerk/nextjs/server";
 import {
   getConvexClient,
   api,
-  isConvexConfigurationError,
 } from "@/lib/convex/client";
 import { asConvexId } from "@/lib/convex/ids";
+import { FRIENDLY_SERVER_ERROR } from "@/lib/api-error";
+import { recordServerError } from "@/lib/server-error";
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  const { userId } = await auth();
+  let userId: string | null;
+  try {
+    ({ userId } = await auth());
+  } catch (error) {
+    const errorId = await recordServerError("episodes.auth", error);
+    return NextResponse.json({ error: FRIENDLY_SERVER_ERROR, errorId }, { status: 503 });
+  }
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -41,13 +48,10 @@ export async function GET(
 
     return NextResponse.json(episode, { status: 200 });
   } catch (error) {
-    if (isConvexConfigurationError(error)) {
-      return NextResponse.json({ error: error.message }, { status: 503 });
-    }
-
+    const errorId = await recordServerError("episodes.detail", error);
     return NextResponse.json(
-      { error: "Episode not found" },
-      { status: 404 }
+      { error: FRIENDLY_SERVER_ERROR, errorId },
+      { status: 503 }
     );
   }
 }
