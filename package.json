@@ -6,6 +6,7 @@
     "predev": "node scripts/check-local-setup.mjs",
     "dev": "next dev",
     "dev:all": "node scripts/dev-all.mjs",
+    "sync:fuzzy-brain": "node scripts/fuzzy-brain-sync.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

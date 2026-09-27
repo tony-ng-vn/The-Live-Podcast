@@ -60,3 +60,6 @@ next-env.d.ts
 
 # local server diagnostics
 /logs/
+
+# private chat transfer previews and Fuzzy Brain receipts
+/.local/
